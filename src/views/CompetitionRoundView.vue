@@ -97,7 +97,7 @@ async function mutateCompetition(mutator: (draft: Competition) => void) {
     return
   }
 
-  const draft = structuredClone(competition.value)
+  const draft = JSON.parse(JSON.stringify(competition.value)) as Competition
   mutator(draft)
   await competitionsStore.saveCompetition(draft)
 }

@@ -31,15 +31,15 @@ function nudge(delta: number) {
   emit('update', nextValue)
 }
 
-function handleInput(event: Event) {
-  const target = event.target as HTMLInputElement
+function handleInput(next: string | number) {
+  const raw = typeof next === 'number' ? String(next) : next
 
-  if (!target.value) {
+  if (!raw) {
     emit('update', null)
     return
   }
 
-  const numericValue = Number(target.value)
+  const numericValue = Number(raw)
   emit('update', Number.isFinite(numericValue) ? Math.max(1, numericValue) : null)
 }
 </script>
@@ -73,9 +73,9 @@ function handleInput(event: Event) {
           inputmode="numeric"
           type="number"
           min="1"
-          :value="displayValue"
+          :model-value="displayValue"
           class="h-16 rounded-2xl border-border/90 text-center text-2xl font-semibold tracking-tight"
-          @input="handleInput"
+          @update:model-value="handleInput"
         />
 
         <Button variant="outline" class="h-14 rounded-2xl" @click="nudge(1)">

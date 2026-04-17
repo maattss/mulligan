@@ -9,7 +9,9 @@
     "typecheck": "vue-tsc --noEmit",
     "test": "vitest --run",
     "test:watch": "vitest",
-    "sync:courses": "node scripts/sync-courses.mjs"
+    "test:e2e": "playwright test",
+    "sync:courses": "node scripts/sync-courses.mjs",
+    "pwa:assets": "pwa-assets-generator"
   },
   "dependencies": {
     "@tanstack/vue-table": "^8.21.3",
@@ -28,8 +30,10 @@
     "vue-sonner": "^2.0.9"
   },
   "devDependencies": {
+    "@playwright/test": "^1.59.1",
     "@tailwindcss/vite": "^4.2.2",
     "@types/node": "^25.6.0",
+    "@vite-pwa/assets-generator": "^1.0.2",
     "@vitejs/plugin-vue": "^6.0.6",
     "@vue/test-utils": "^2.4.6",
     "jsdom": "^29.0.2",
