@@ -1,0 +1,50 @@
+{
+  "source": "GolfCourseAPI seed manifest",
+  "courses": [
+    {
+      "clubName": "Bergen Golfklubb",
+      "courseName": "Bergen Championship Course",
+      "city": "Bergen",
+      "region": "Vestland",
+      "country": "Norway",
+      "aliases": ["Bergen GK", "Bergen Golf Club"],
+      "includeByDefault": true
+    },
+    {
+      "clubName": "Fana Golfklubb",
+      "courseName": "Fana Championship Course",
+      "city": "Bergen",
+      "region": "Vestland",
+      "country": "Norway",
+      "aliases": ["Fana GK", "Fana Golf Club"],
+      "includeByDefault": true
+    },
+    {
+      "clubName": "Meland Golfklubb",
+      "courseName": "Meland Course",
+      "city": "Bergen",
+      "region": "Vestland",
+      "country": "Norway",
+      "aliases": ["Meland GK", "Meland Golf Club"],
+      "includeByDefault": true
+    },
+    {
+      "clubName": "Stavanger Golfklubb",
+      "courseName": "Hafrsfjord Course",
+      "city": "Stavanger",
+      "region": "Rogaland",
+      "country": "Norway",
+      "aliases": ["Stavanger GK", "Stavanger Golf Club"],
+      "includeByDefault": true
+    },
+    {
+      "clubName": "Sola Golfklubb",
+      "courseName": "Links Course",
+      "city": "Sola",
+      "region": "Rogaland",
+      "country": "Norway",
+      "aliases": ["Sola GK", "Sola Golf Club"],
+      "includeByDefault": true
+    }
+  ]
+}

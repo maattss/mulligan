@@ -1,0 +1,181 @@
+{
+  "generatedAt": "2026-04-17T00:00:00.000Z",
+  "source": "Bundled local seed built from GolfCourseAPI-ready fixtures and manual overrides.",
+  "courses": [
+    {
+      "id": "bergen-gk",
+      "clubName": "Bergen Golfklubb",
+      "courseName": "Bergen Championship Course",
+      "city": "Bergen",
+      "region": "Vestland",
+      "country": "Norway",
+      "holes": 18,
+      "tees": [
+        {
+          "id": "bergen-gk-black",
+          "name": "Black",
+          "color": "black",
+          "par": 72,
+          "courseRating": 72.8,
+          "slopeRating": 132,
+          "yardage": 6903,
+          "holePars": [4, 4, 3, 5, 4, 4, 3, 5, 4, 4, 5, 3, 4, 4, 4, 3, 5, 4],
+          "strokeIndexes": [9, 3, 15, 1, 7, 13, 17, 5, 11, 10, 2, 16, 8, 14, 6, 18, 4, 12],
+          "holeYardages": [389, 428, 182, 528, 378, 401, 166, 548, 391, 407, 541, 189, 424, 371, 436, 177, 548, 399]
+        },
+        {
+          "id": "bergen-gk-yellow",
+          "name": "Yellow",
+          "color": "yellow",
+          "par": 72,
+          "courseRating": 70.9,
+          "slopeRating": 126,
+          "yardage": 6530,
+          "holePars": [4, 4, 3, 5, 4, 4, 3, 5, 4, 4, 5, 3, 4, 4, 4, 3, 5, 4],
+          "strokeIndexes": [9, 3, 15, 1, 7, 13, 17, 5, 11, 10, 2, 16, 8, 14, 6, 18, 4, 12],
+          "holeYardages": [365, 402, 167, 505, 356, 384, 154, 522, 368, 390, 515, 172, 401, 348, 412, 165, 526, 378]
+        }
+      ]
+    },
+    {
+      "id": "fana-gk",
+      "clubName": "Fana Golfklubb",
+      "courseName": "Fana Championship Course",
+      "city": "Bergen",
+      "region": "Vestland",
+      "country": "Norway",
+      "holes": 18,
+      "tees": [
+        {
+          "id": "fana-gk-black",
+          "name": "Black",
+          "color": "black",
+          "par": 72,
+          "courseRating": 73.1,
+          "slopeRating": 134,
+          "yardage": 7298,
+          "holePars": [5, 4, 4, 3, 4, 4, 5, 3, 4, 4, 4, 3, 5, 4, 4, 3, 5, 4],
+          "strokeIndexes": [5, 11, 3, 17, 9, 15, 1, 13, 7, 10, 6, 18, 2, 12, 8, 16, 4, 14],
+          "holeYardages": [541, 402, 428, 176, 398, 367, 558, 197, 416, 423, 408, 188, 523, 381, 447, 171, 569, 405]
+        },
+        {
+          "id": "fana-gk-yellow",
+          "name": "Yellow",
+          "color": "yellow",
+          "par": 72,
+          "courseRating": 71.4,
+          "slopeRating": 129,
+          "yardage": 6626,
+          "holePars": [5, 4, 4, 3, 4, 4, 5, 3, 4, 4, 4, 3, 5, 4, 4, 3, 5, 4],
+          "strokeIndexes": [5, 11, 3, 17, 9, 15, 1, 13, 7, 10, 6, 18, 2, 12, 8, 16, 4, 14],
+          "holeYardages": [512, 381, 406, 164, 372, 348, 531, 182, 394, 401, 389, 171, 498, 366, 423, 157, 544, 387]
+        }
+      ]
+    },
+    {
+      "id": "meland-gk",
+      "clubName": "Meland Golfklubb",
+      "courseName": "Meland Course",
+      "city": "Bergen",
+      "region": "Vestland",
+      "country": "Norway",
+      "holes": 18,
+      "tees": [
+        {
+          "id": "meland-gk-black",
+          "name": "Black",
+          "color": "black",
+          "par": 72,
+          "courseRating": 72.6,
+          "slopeRating": 132,
+          "yardage": 7257,
+          "holePars": [4, 5, 4, 3, 4, 4, 5, 3, 4, 4, 4, 3, 5, 4, 4, 3, 5, 4],
+          "strokeIndexes": [7, 1, 9, 17, 11, 15, 3, 13, 5, 8, 6, 18, 2, 12, 10, 16, 4, 14],
+          "holeYardages": [412, 551, 396, 182, 379, 407, 544, 193, 423, 414, 391, 176, 529, 374, 431, 189, 557, 409]
+        },
+        {
+          "id": "meland-gk-yellow",
+          "name": "Yellow",
+          "color": "yellow",
+          "par": 72,
+          "courseRating": 70.7,
+          "slopeRating": 126,
+          "yardage": 6591,
+          "holePars": [4, 5, 4, 3, 4, 4, 5, 3, 4, 4, 4, 3, 5, 4, 4, 3, 5, 4],
+          "strokeIndexes": [7, 1, 9, 17, 11, 15, 3, 13, 5, 8, 6, 18, 2, 12, 10, 16, 4, 14],
+          "holeYardages": [388, 528, 371, 168, 357, 384, 516, 181, 402, 392, 374, 162, 501, 358, 409, 176, 533, 391]
+        }
+      ]
+    },
+    {
+      "id": "stavanger-gk",
+      "clubName": "Stavanger Golfklubb",
+      "courseName": "Hafrsfjord Course",
+      "city": "Stavanger",
+      "region": "Rogaland",
+      "country": "Norway",
+      "holes": 18,
+      "tees": [
+        {
+          "id": "stavanger-gk-black",
+          "name": "Black",
+          "color": "black",
+          "par": 72,
+          "courseRating": 73.4,
+          "slopeRating": 136,
+          "yardage": 7317,
+          "holePars": [4, 4, 5, 3, 4, 4, 5, 3, 4, 4, 5, 3, 4, 4, 4, 3, 5, 4],
+          "strokeIndexes": [9, 3, 1, 17, 11, 15, 5, 13, 7, 10, 2, 18, 8, 14, 6, 16, 4, 12],
+          "holeYardages": [401, 424, 561, 182, 381, 405, 532, 189, 417, 409, 551, 178, 425, 363, 439, 184, 572, 404]
+        },
+        {
+          "id": "stavanger-gk-yellow",
+          "name": "Yellow",
+          "color": "yellow",
+          "par": 72,
+          "courseRating": 71.0,
+          "slopeRating": 127,
+          "yardage": 6542,
+          "holePars": [4, 4, 5, 3, 4, 4, 5, 3, 4, 4, 5, 3, 4, 4, 4, 3, 5, 4],
+          "strokeIndexes": [9, 3, 1, 17, 11, 15, 5, 13, 7, 10, 2, 18, 8, 14, 6, 16, 4, 12],
+          "holeYardages": [376, 401, 533, 168, 359, 382, 507, 176, 394, 388, 524, 163, 402, 347, 417, 171, 548, 386]
+        }
+      ]
+    },
+    {
+      "id": "sola-gk",
+      "clubName": "Sola Golfklubb",
+      "courseName": "Links Course",
+      "city": "Sola",
+      "region": "Rogaland",
+      "country": "Norway",
+      "holes": 18,
+      "tees": [
+        {
+          "id": "sola-gk-black",
+          "name": "Black",
+          "color": "black",
+          "par": 72,
+          "courseRating": 73.0,
+          "slopeRating": 134,
+          "yardage": 7205,
+          "holePars": [4, 4, 3, 5, 4, 4, 5, 3, 4, 4, 5, 3, 4, 4, 4, 3, 5, 4],
+          "strokeIndexes": [11, 5, 17, 1, 9, 15, 3, 13, 7, 10, 2, 18, 8, 14, 6, 16, 4, 12],
+          "holeYardages": [395, 421, 187, 547, 381, 402, 536, 182, 408, 414, 562, 175, 428, 368, 438, 183, 577, 401]
+        },
+        {
+          "id": "sola-gk-yellow",
+          "name": "Yellow",
+          "color": "yellow",
+          "par": 72,
+          "courseRating": 71.2,
+          "slopeRating": 128,
+          "yardage": 6532,
+          "holePars": [4, 4, 3, 5, 4, 4, 5, 3, 4, 4, 5, 3, 4, 4, 4, 3, 5, 4],
+          "strokeIndexes": [11, 5, 17, 1, 9, 15, 3, 13, 7, 10, 2, 18, 8, 14, 6, 16, 4, 12],
+          "holeYardages": [371, 398, 174, 521, 362, 379, 508, 168, 387, 392, 536, 161, 404, 351, 416, 169, 553, 382]
+        }
+      ]
+    }
+  ]
+}
