@@ -10,9 +10,10 @@ import {
   buildHoleDetails,
   getCompetitionPlayerAdjustments,
   getFormatLabel,
-  getStablefordPoints,
   getStrokeAdjustments,
   type Competition,
+  type CompetitionFormat,
+  type LeaderboardEntry,
 } from '@/lib/golf'
 import { useCompetitionsStore } from '@/stores/competitions'
 
@@ -28,12 +29,27 @@ const summary = computed(() =>
   competition.value ? buildCompetitionSummary(competition.value) : null,
 )
 
+const summaryById = computed(() => {
+  const map = new Map<string, LeaderboardEntry>()
+  summary.value?.leaderboard.forEach((entry) => map.set(entry.id, entry))
+  return map
+})
+
+const mixedTees = computed(() => {
+  const players = competition.value?.players ?? []
+  if (players.length <= 1) return false
+  const firstTeeId = players[0].teeId
+  return players.some((player) => player.teeId !== firstTeeId)
+})
+
+const referenceTee = computed(() => {
+  const current = competition.value
+  if (!current) return null
+  return current.players[0]?.teeSnapshot ?? current.courseSnapshot.tees[0] ?? null
+})
+
 const holeDetails = computed(() =>
-  competition.value
-    ? buildHoleDetails(
-        competition.value.players[0]?.teeSnapshot ?? competition.value.courseSnapshot.tees[0],
-      )
-    : [],
+  referenceTee.value ? buildHoleDetails(referenceTee.value) : [],
 )
 
 const currentHoleIndex = computed(() =>
@@ -42,6 +58,13 @@ const currentHoleIndex = computed(() =>
 
 const currentHole = computed(() => holeDetails.value[currentHoleIndex.value])
 
+const isStablefordFormat = computed(() => {
+  const format = competition.value?.format
+  return format === 'stableford' || format === 'fourball-stableford'
+})
+
+const isMatchPlay = computed(() => competition.value?.format === 'match-play')
+
 type ScoreEntity = {
   id: string
   label: string
@@ -49,15 +72,15 @@ type ScoreEntity = {
   playingHandicap: number
   strokesGiven: number
   value: number | null
-  totalPoints: number
+  par: number
+  summaryEntry: LeaderboardEntry | undefined
   update: (value: number | null) => Promise<void>
 }
 
 const entities = computed<ScoreEntity[]>(() => {
   const current = competition.value
   if (!current) return []
-
-  const pars = current.players[0]?.teeSnapshot.holePars ?? []
+  const map = summaryById.value
 
   if (current.format === 'scramble-2') {
     return current.sides.map((side) => {
@@ -66,13 +89,8 @@ const entities = computed<ScoreEntity[]>(() => {
       const teeColor = teeSnapshot?.color ?? '#3B7A5C'
       const adjustments = teeSnapshot
         ? getStrokeAdjustments(side.playingHandicap ?? 0, teeSnapshot.strokeIndexes)
-        : Array.from({ length: pars.length }, () => 0)
-      let totalPts = 0
-      sideScores.forEach((score, i) => {
-        const par = pars[i] ?? 4
-        const adj = adjustments[i] ?? 0
-        totalPts += getStablefordPoints(par, score == null ? null : score - adj)
-      })
+        : []
+      const par = teeSnapshot?.holePars[currentHoleIndex.value] ?? currentHole.value?.par ?? 4
       return {
         id: side.id,
         label: side.name,
@@ -80,7 +98,8 @@ const entities = computed<ScoreEntity[]>(() => {
         playingHandicap: side.playingHandicap ?? 0,
         strokesGiven: adjustments[currentHoleIndex.value] ?? 0,
         value: sideScores[currentHoleIndex.value] ?? null,
-        totalPoints: totalPts,
+        par,
+        summaryEntry: map.get(side.id),
         update: (value: number | null) => updateSideScore(side.id, value),
       }
     })
@@ -89,12 +108,7 @@ const entities = computed<ScoreEntity[]>(() => {
   return current.players.map((player) => {
     const playerScores = current.scores.playerScores[player.id] ?? []
     const adjustments = getCompetitionPlayerAdjustments(current, player)
-    let totalPts = 0
-    playerScores.forEach((score, i) => {
-      const par = player.teeSnapshot.holePars[i] ?? 4
-      const adj = adjustments[i] ?? 0
-      totalPts += getStablefordPoints(par, score == null ? null : score - adj)
-    })
+    const par = player.teeSnapshot.holePars[currentHoleIndex.value] ?? 4
     return {
       id: player.id,
       label: player.displayName,
@@ -102,16 +116,27 @@ const entities = computed<ScoreEntity[]>(() => {
       playingHandicap: player.playingHandicap,
       strokesGiven: adjustments[currentHoleIndex.value] ?? 0,
       value: playerScores[currentHoleIndex.value] ?? null,
-      totalPoints: totalPts,
+      par,
+      summaryEntry: map.get(player.id),
       update: (value: number | null) => updatePlayerScore(player.id, value),
     }
   })
 })
 
-const leaderboard = computed(() => {
-  const entries = [...entities.value]
-  entries.sort((a, b) => b.totalPoints - a.totalPoints)
-  return entries
+const leaderboard = computed<LeaderboardEntry[]>(() => summary.value?.leaderboard ?? [])
+
+const teeColorById = computed(() => {
+  const map = new Map<string, string>()
+  const current = competition.value
+  if (!current) return map
+  for (const player of current.players) {
+    map.set(player.id, player.teeSnapshot.color)
+  }
+  for (const side of current.sides) {
+    const color = current.players.find((p) => p.sideId === side.id)?.teeSnapshot.color
+    if (color) map.set(side.id, color)
+  }
+  return map
 })
 
 const holesPlayed = computed(() => summary.value?.completeHoles ?? 0)
@@ -194,6 +219,18 @@ async function handleSubmitScore(value: number) {
   }
 }
 
+async function handleClearScore() {
+  const entity = openEntity.value
+  if (!entity || isSubmittingScore.value) return
+  isSubmittingScore.value = true
+  try {
+    await entity.update(null)
+    openEntityId.value = null
+  } finally {
+    isSubmittingScore.value = false
+  }
+}
+
 const completionActionLabel = computed(() =>
   competition.value?.status === 'completed' ? 'Reopen competition' : 'Mark competition complete',
 )
@@ -214,6 +251,42 @@ function scoreLabelShort(value: number, par: number) {
   if (diff === 1) return 'Bogey'
   if (diff === 2) return 'Double'
   return `+${diff}`
+}
+
+type PrimaryValue = { display: string; label: string; numeric: number }
+
+function primaryValueFor(entry: LeaderboardEntry | undefined, format: CompetitionFormat | undefined): PrimaryValue {
+  if (!entry || !format) return { display: '–', label: 'pts', numeric: 0 }
+  if (format === 'stableford' || format === 'fourball-stableford') {
+    return { display: String(entry.stablefordPoints), label: 'pts', numeric: entry.stablefordPoints }
+  }
+  if (format === 'match-play') {
+    return { display: String(entry.stablefordPoints), label: entry.stablefordPoints === 1 ? 'hole' : 'holes', numeric: entry.stablefordPoints }
+  }
+  return { display: String(entry.netTotal), label: 'net', numeric: entry.netTotal }
+}
+
+function perHoleValue(entity: ScoreEntity): { display: string; label: string } {
+  if (entity.value == null) return { display: '–', label: isStablefordFormat.value ? 'pts' : 'net' }
+  const net = entity.value - entity.strokesGiven
+  if (isStablefordFormat.value) {
+    return { display: String(Math.max(0, 2 + entity.par - net)), label: 'pts' }
+  }
+  return { display: String(net), label: 'net' }
+}
+
+function gapLabel(index: number) {
+  const entries = leaderboard.value
+  if (index === 0 || entries.length === 0) return ''
+  const format = competition.value?.format
+  const top = primaryValueFor(entries[0], format).numeric
+  const current = primaryValueFor(entries[index], format).numeric
+  if (format === 'stroke' || format === 'fourball-stroke' || format === 'scramble-2') {
+    const diff = current - top
+    return diff > 0 ? `+${diff}` : ''
+  }
+  const diff = top - current
+  return diff > 0 ? `−${diff}` : ''
 }
 </script>
 
@@ -291,7 +364,7 @@ function scoreLabelShort(value: number, par: number) {
               Par {{ currentHole?.par ?? 4 }}
             </div>
           </div>
-          <div class="text-right">
+          <div v-if="!mixedTees" class="text-right">
             <div class="flex items-baseline justify-end gap-2.5">
               <span class="font-mono text-[10px] uppercase tracking-[0.16em] text-fw-ink-muted">SI</span>
               <span class="font-serif text-[17px] font-medium tabular-nums text-fw-ink">
@@ -303,6 +376,14 @@ function scoreLabelShort(value: number, par: number) {
               <span class="font-serif text-[17px] font-medium tabular-nums text-fw-ink">
                 {{ currentHole?.yardage ?? '–' }}
               </span>
+            </div>
+          </div>
+          <div v-else class="text-right">
+            <div class="font-mono text-[10px] uppercase tracking-[0.16em] text-fw-ink-muted">
+              Mixed tees
+            </div>
+            <div class="mt-0.5 font-serif text-[13px] italic text-fw-ink-soft">
+              per-player SI
             </div>
           </div>
         </div>
@@ -376,12 +457,12 @@ function scoreLabelShort(value: number, par: number) {
             <template v-if="entity.value != null">
               <div
                 class="font-serif text-[34px] font-semibold leading-none tracking-tight tabular-nums"
-                :class="scoreColor(entity.value, currentHole?.par ?? 4)"
+                :class="scoreColor(entity.value, entity.par)"
               >
                 {{ entity.value }}
               </div>
               <div class="mt-1 font-mono text-[9px] uppercase tracking-wide text-fw-ink-muted">
-                {{ scoreLabelShort(entity.value, currentHole?.par ?? 4) }}
+                {{ scoreLabelShort(entity.value, entity.par) }}
               </div>
             </template>
             <template v-else>
@@ -389,24 +470,24 @@ function scoreLabelShort(value: number, par: number) {
             </template>
           </div>
 
-          <!-- Right: points + total -->
+          <!-- Right: per-hole value + running total (format-aware) -->
           <div class="min-w-[48px] text-right">
             <div
               class="font-serif text-2xl font-medium leading-none tabular-nums"
               :class="entity.value != null ? 'text-fw-ink' : 'text-fw-ink-dim'"
             >
-              {{
-                entity.value != null
-                  ? getStablefordPoints(currentHole?.par ?? 4, entity.value - entity.strokesGiven)
-                  : '–'
-              }}
+              {{ perHoleValue(entity).display }}
             </div>
             <div class="mt-0.5 font-mono text-[9px] uppercase tracking-wide text-fw-ink-muted">
-              pts
+              {{ perHoleValue(entity).label }}
             </div>
             <div class="mt-1.5 font-serif text-xs tabular-nums text-fw-ink-soft">
-              <span class="font-semibold text-fw-ink">{{ entity.totalPoints }}</span>
-              <span class="ml-0.5 text-[10px] text-fw-ink-muted">total</span>
+              <span class="font-semibold text-fw-ink">
+                {{ primaryValueFor(entity.summaryEntry, competition.format).display }}
+              </span>
+              <span class="ml-0.5 text-[10px] text-fw-ink-muted">
+                {{ isMatchPlay ? 'won' : 'total' }}
+              </span>
             </div>
           </div>
         </button>
@@ -416,7 +497,7 @@ function scoreLabelShort(value: number, par: number) {
         </p>
       </section>
 
-      <!-- Sticky leaderboard footer -->
+      <!-- Sticky leaderboard footer (sourced from summary.leaderboard) -->
       <footer
         class="border-t border-fw-line bg-fw-surface-alt px-5 pb-6 pt-3.5 shadow-[0_-8px_24px_rgba(0,0,0,0.04)]"
       >
@@ -430,32 +511,38 @@ function scoreLabelShort(value: number, par: number) {
         </div>
         <ol class="space-y-1">
           <li
-            v-for="(entity, index) in leaderboard"
-            :key="entity.id"
+            v-for="(entry, index) in leaderboard"
+            :key="entry.id"
             class="flex items-center justify-between py-0.5"
           >
             <div class="flex min-w-0 flex-1 items-center gap-2.5">
               <span
                 class="w-3.5 shrink-0 font-mono text-[11px] tabular-nums text-fw-ink-muted"
-              >{{ index + 1 }}</span>
+              >{{ entry.position ?? index + 1 }}</span>
               <span
                 class="block size-1.5 shrink-0 rounded-full border"
-                :style="{ backgroundColor: entity.teeColor, borderColor: 'var(--fw-line)' }"
+                :style="{ backgroundColor: teeColorById.get(entry.id) ?? '#3B7A5C', borderColor: 'var(--fw-line)' }"
               />
               <span
                 class="truncate text-[13px] tracking-tight text-fw-ink"
-                :class="index === 0 ? 'font-semibold' : 'font-medium'"
+                :class="(entry.position ?? index + 1) === 1 ? 'font-semibold' : 'font-medium'"
               >
-                {{ entity.label }}
+                {{ entry.label }}
               </span>
               <span
-                v-if="index > 0"
+                v-if="gapLabel(index)"
                 class="font-mono text-[10px] text-fw-ink-muted"
-              >−{{ leaderboard[0].totalPoints - entity.totalPoints }}</span>
+              >{{ gapLabel(index) }}</span>
+              <span
+                v-if="entry.matchStatus"
+                class="font-mono text-[10px] uppercase tracking-wide text-fw-ink-muted"
+              >{{ entry.matchStatus }}</span>
             </div>
             <div class="font-serif text-lg font-semibold tracking-tight tabular-nums text-fw-ink">
-              {{ entity.totalPoints }}
-              <span class="ml-0.5 font-mono text-[10px] font-normal text-fw-ink-muted">pts</span>
+              {{ primaryValueFor(entry, competition.format).display }}
+              <span class="ml-0.5 font-mono text-[10px] font-normal text-fw-ink-muted">
+                {{ primaryValueFor(entry, competition.format).label }}
+              </span>
             </div>
           </li>
         </ol>
@@ -470,6 +557,7 @@ function scoreLabelShort(value: number, par: number) {
         :current-value="openEntity?.value ?? null"
         @close="openEntityId = null"
         @submit="handleSubmitScore"
+        @clear="handleClearScore"
       />
     </div>
   </div>

@@ -15,6 +15,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   close: []
   submit: [value: number]
+  clear: []
 }>()
 
 const input = ref('')
@@ -101,14 +102,25 @@ const rows: string[][] = [
             </p>
             <p class="mt-1 font-serif text-2xl font-medium text-fw-ink">Score</p>
           </div>
-          <button
-            type="button"
-            class="flex h-8 w-8 items-center justify-center rounded-full bg-fw-surface text-fw-ink-soft"
-            aria-label="Close"
-            @click="emit('close')"
-          >
-            <XIcon class="size-3.5" />
-          </button>
+          <div class="flex items-center gap-2">
+            <button
+              v-if="currentValue != null"
+              type="button"
+              class="rounded-full border border-fw-line bg-fw-surface px-3 py-1 font-mono text-[10px] uppercase tracking-[0.1em] text-fw-ink-soft"
+              aria-label="Clear score"
+              @click="emit('clear')"
+            >
+              Clear
+            </button>
+            <button
+              type="button"
+              class="flex h-8 w-8 items-center justify-center rounded-full bg-fw-surface text-fw-ink-soft"
+              aria-label="Close"
+              @click="emit('close')"
+            >
+              <XIcon class="size-3.5" />
+            </button>
+          </div>
         </div>
 
         <div
