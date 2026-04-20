@@ -42,6 +42,7 @@ const router = createRouter({
       meta: {
         title: 'Live Round',
         description: 'Keep score hole-by-hole, review the live leaderboard, and finish the competition offline.',
+        layout: 'bare',
       },
     },
   ],

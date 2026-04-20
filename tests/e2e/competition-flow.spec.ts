@@ -37,29 +37,28 @@ test.describe('Mulligan mobile flow', () => {
     await page.getByRole('button', { name: 'Start Competition' }).click()
     await expect(page).toHaveURL(/\/competitions\/[0-9a-f-]+$/)
 
-    await expect(page.getByRole('tab', { name: 'Score' })).toBeVisible()
-    await expect(page.getByRole('tab', { name: 'Leaderboard' })).toBeVisible()
+    await expect(page.getByText('Leaderboard · thru', { exact: false })).toBeVisible()
 
-    const scoreInputs = page.locator('input[type="number"]')
-    await expect(scoreInputs).toHaveCount(2)
+    const aliceRow = page.getByRole('button', { name: 'Edit score for Alice' })
+    const bobRow = page.getByRole('button', { name: 'Edit score for Bob' })
 
-    const firstPlus = scoreInputs.nth(0).locator('..').getByRole('button').nth(1)
-    const secondPlus = scoreInputs.nth(1).locator('..').getByRole('button').nth(1)
+    await aliceRow.click()
+    await page.getByRole('button', { name: 'Digit 4' }).click()
+    await page.getByRole('button', { name: 'Submit score' }).click()
 
-    await firstPlus.click()
-    await secondPlus.click()
+    await bobRow.click()
+    await page.getByRole('button', { name: 'Digit 5' }).click()
+    await page.getByRole('button', { name: 'Submit score' }).click()
 
-    await expect(scoreInputs.nth(0)).toHaveValue('5')
-    await expect(scoreInputs.nth(1)).toHaveValue('5')
+    await expect(aliceRow).toContainText('4')
+    await expect(bobRow).toContainText('5')
 
-    await page.getByRole('tab', { name: 'Leaderboard' }).click()
-    await expect(page.getByText('1 holes logged').first()).toBeVisible()
+    await expect(page.getByText('Leaderboard · thru 1')).toBeVisible()
 
     const competitionUrl = page.url()
     await page.reload()
     await expect(page).toHaveURL(competitionUrl)
-    await expect(page.getByRole('tab', { name: 'Score' })).toBeVisible()
-    await page.getByRole('tab', { name: 'Leaderboard' }).click()
-    await expect(page.getByText('1 holes logged').first()).toBeVisible()
+    await expect(page.getByText('Leaderboard · thru 1')).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Edit score for Alice' })).toContainText('4')
   })
 })

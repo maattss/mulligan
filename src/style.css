@@ -1,5 +1,5 @@
 
-@import url('https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Fraunces:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 
 @import "tailwindcss";
 
@@ -12,6 +12,21 @@
 @theme inline {
     --font-sans: 'Geist Variable', sans-serif;
     --font-heading: var(--font-sans);
+    --font-serif: 'Fraunces', serif;
+    --font-mono: 'JetBrains Mono', monospace;
+    --color-fw-bg: var(--fw-bg);
+    --color-fw-surface: var(--fw-surface);
+    --color-fw-surface-alt: var(--fw-surface-alt);
+    --color-fw-line: var(--fw-line);
+    --color-fw-line-soft: var(--fw-line-soft);
+    --color-fw-ink: var(--fw-ink);
+    --color-fw-ink-soft: var(--fw-ink-soft);
+    --color-fw-ink-muted: var(--fw-ink-muted);
+    --color-fw-ink-dim: var(--fw-ink-dim);
+    --color-fw-accent: var(--fw-accent);
+    --color-fw-emerald: var(--fw-emerald);
+    --color-fw-clay: var(--fw-clay);
+    --color-fw-gold: var(--fw-gold);
     --color-sidebar-ring: var(--sidebar-ring);
     --color-sidebar-border: var(--sidebar-border);
     --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -82,6 +97,20 @@
     --sidebar-accent-foreground: oklch(0.962 0.008 95.32);
     --sidebar-border: oklch(0.37 0.03 154.1);
     --sidebar-ring: oklch(0.65 0.08 149.3);
+
+    --fw-bg: #EFEAD8;
+    --fw-surface: #FBF7EC;
+    --fw-surface-alt: #F4EEDB;
+    --fw-line: rgba(27, 58, 47, 0.10);
+    --fw-line-soft: rgba(27, 58, 47, 0.06);
+    --fw-ink: #17332A;
+    --fw-ink-soft: rgba(23, 51, 42, 0.6);
+    --fw-ink-muted: rgba(23, 51, 42, 0.42);
+    --fw-ink-dim: rgba(23, 51, 42, 0.22);
+    --fw-accent: #1E4A3A;
+    --fw-emerald: #3B7A5C;
+    --fw-clay: #B8603A;
+    --fw-gold: #C99B3F;
 }
 
 .dark {
@@ -116,6 +145,20 @@
     --sidebar-accent-foreground: oklch(0.95 0.008 95.32);
     --sidebar-border: oklch(1 0 0 / 10%);
     --sidebar-ring: oklch(0.68 0.086 149.92);
+
+    --fw-bg: #0C1815;
+    --fw-surface: #132420;
+    --fw-surface-alt: #0F1E1A;
+    --fw-line: rgba(255, 255, 255, 0.09);
+    --fw-line-soft: rgba(255, 255, 255, 0.04);
+    --fw-ink: #EDE6D2;
+    --fw-ink-soft: rgba(237, 230, 210, 0.65);
+    --fw-ink-muted: rgba(237, 230, 210, 0.42);
+    --fw-ink-dim: rgba(237, 230, 210, 0.22);
+    --fw-accent: #6FBF94;
+    --fw-emerald: #6FBF94;
+    --fw-clay: #E08B5F;
+    --fw-gold: #E0B458;
 }
 
 @layer base {

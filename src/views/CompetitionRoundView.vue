@@ -1,38 +1,16 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
-import {
-  ArrowLeftIcon,
-  ArrowRightIcon,
-  CheckCheckIcon,
-  FlagIcon,
-  TrophyIcon,
-} from 'lucide-vue-next'
-import LeaderboardTable from '@/components/competition/LeaderboardTable.vue'
-import ScoreControl from '@/components/competition/ScoreControl.vue'
-import { Badge } from '@/components/ui/badge'
+import { CheckCheckIcon, FlagIcon, MenuIcon } from 'lucide-vue-next'
+import NumberPadSheet from '@/components/competition/NumberPadSheet.vue'
 import { Button } from '@/components/ui/button'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
-import {
-  Empty,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyTitle,
-} from '@/components/ui/empty'
-import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   buildCompetitionSummary,
   buildHoleDetails,
+  getCompetitionPlayerAdjustments,
   getFormatLabel,
-  isTeamFormat,
+  getStablefordPoints,
   type Competition,
 } from '@/lib/golf'
 import { useCompetitionsStore } from '@/stores/competitions'
@@ -50,7 +28,11 @@ const summary = computed(() =>
 )
 
 const holeDetails = computed(() =>
-  competition.value ? buildHoleDetails(competition.value.players[0]?.teeSnapshot ?? competition.value.courseSnapshot.tees[0]) : [],
+  competition.value
+    ? buildHoleDetails(
+        competition.value.players[0]?.teeSnapshot ?? competition.value.courseSnapshot.tees[0],
+      )
+    : [],
 )
 
 const currentHoleIndex = computed(() =>
@@ -59,44 +41,117 @@ const currentHoleIndex = computed(() =>
 
 const currentHole = computed(() => holeDetails.value[currentHoleIndex.value])
 
-const scoreEntities = computed(() => {
-  const current = competition.value
+type ScoreEntity = {
+  id: string
+  label: string
+  teeColor: string
+  playingHandicap: number
+  strokesGiven: number
+  value: number | null
+  totalPoints: number
+  update: (value: number | null) => void
+}
 
-  if (!current) {
-    return []
-  }
+const entities = computed<ScoreEntity[]>(() => {
+  const current = competition.value
+  if (!current) return []
+
+  const pars = current.players[0]?.teeSnapshot.holePars ?? []
 
   if (current.format === 'scramble-2') {
-    return current.sides.map((side) => ({
-      id: side.id,
-      label: side.name,
-      subtitle: current.players
-        .filter((player) => player.sideId === side.id)
-        .map((player) => player.displayName)
-        .join(' / '),
-      badge: `PH ${side.playingHandicap ?? 0}`,
-      value: current.scores.sideScores[side.id]?.[currentHoleIndex.value] ?? null,
-      par: current.players[0]?.teeSnapshot.holePars[currentHoleIndex.value] ?? 4,
-      update: (value: number | null) => updateSideScore(side.id, value),
-    }))
+    return current.sides.map((side) => {
+      const sideScores = current.scores.sideScores[side.id] ?? []
+      const teeSnapshot = current.players.find((p) => p.sideId === side.id)?.teeSnapshot
+      const teeColor = teeSnapshot?.color ?? '#3B7A5C'
+      const adjustments = teeSnapshot
+        ? Array.from({ length: pars.length }, (_, i) => {
+            const sideHandicap = side.playingHandicap ?? 0
+            return Math.floor(
+              sideHandicap / (teeSnapshot.strokeIndexes.length || 18) +
+                (teeSnapshot.strokeIndexes[i] <=
+                sideHandicap % (teeSnapshot.strokeIndexes.length || 18)
+                  ? 1
+                  : 0),
+            )
+          })
+        : []
+      let totalPts = 0
+      sideScores.forEach((score, i) => {
+        const par = pars[i] ?? 4
+        const adj = adjustments[i] ?? 0
+        totalPts += getStablefordPoints(par, score == null ? null : score - adj)
+      })
+      return {
+        id: side.id,
+        label: side.name,
+        teeColor,
+        playingHandicap: side.playingHandicap ?? 0,
+        strokesGiven: adjustments[currentHoleIndex.value] ?? 0,
+        value: sideScores[currentHoleIndex.value] ?? null,
+        totalPoints: totalPts,
+        update: (value: number | null) => updateSideScore(side.id, value),
+      }
+    })
   }
 
-  return current.players.map((player) => ({
-    id: player.id,
-    label: player.displayName,
-    subtitle: `${player.teeSnapshot.name} tee${player.sideId ? ` · ${player.sideId.replace('-', ' ')}` : ''}`,
-    badge: `PH ${player.playingHandicap}`,
-    value: current.scores.playerScores[player.id]?.[currentHoleIndex.value] ?? null,
-    par: player.teeSnapshot.holePars[currentHoleIndex.value] ?? 4,
-    update: (value: number | null) => updatePlayerScore(player.id, value),
-  }))
+  return current.players.map((player) => {
+    const playerScores = current.scores.playerScores[player.id] ?? []
+    const adjustments = getCompetitionPlayerAdjustments(current, player)
+    let totalPts = 0
+    playerScores.forEach((score, i) => {
+      const par = player.teeSnapshot.holePars[i] ?? 4
+      const adj = adjustments[i] ?? 0
+      totalPts += getStablefordPoints(par, score == null ? null : score - adj)
+    })
+    return {
+      id: player.id,
+      label: player.displayName,
+      teeColor: player.teeSnapshot.color,
+      playingHandicap: player.playingHandicap,
+      strokesGiven: adjustments[currentHoleIndex.value] ?? 0,
+      value: playerScores[currentHoleIndex.value] ?? null,
+      totalPoints: totalPts,
+      update: (value: number | null) => updatePlayerScore(player.id, value),
+    }
+  })
 })
 
-async function mutateCompetition(mutator: (draft: Competition) => void) {
-  if (!competition.value) {
-    return
-  }
+const leaderboard = computed(() => {
+  const entries = [...entities.value]
+  entries.sort((a, b) => b.totalPoints - a.totalPoints)
+  return entries
+})
 
+const holesPlayed = computed(() => summary.value?.completeHoles ?? 0)
+
+const visibleHoles = computed(() => {
+  const holes = holeDetails.value
+  if (holes.length === 0) return []
+  const total = holes.length
+  const max = Math.min(9, total)
+  const half = Math.floor(max / 2)
+  const start = Math.max(0, Math.min(total - max, currentHoleIndex.value - half))
+  return holes.slice(start, start + max)
+})
+
+const isHoleCompleted = (holeNumber: number) => {
+  const current = competition.value
+  if (!current) return false
+  const index = holeNumber - 1
+  if (current.format === 'scramble-2') {
+    return current.sides.every((side) => current.scores.sideScores[side.id]?.[index] != null)
+  }
+  return current.players.every((p) => current.scores.playerScores[p.id]?.[index] != null)
+}
+
+const openEntityId = ref<string | null>(null)
+
+const openEntity = computed(() =>
+  openEntityId.value ? entities.value.find((e) => e.id === openEntityId.value) ?? null : null,
+)
+
+async function mutateCompetition(mutator: (draft: Competition) => void) {
+  if (!competition.value) return
   const draft = JSON.parse(JSON.stringify(competition.value)) as Competition
   mutator(draft)
   await competitionsStore.saveCompetition(draft)
@@ -120,241 +175,298 @@ async function setCurrentHole(holeNumber: number) {
   })
 }
 
-async function stepHole(delta: number) {
-  if (!competition.value) {
-    return
-  }
-
-  const nextHole = Math.min(competition.value.holes, Math.max(1, competition.value.currentHole + delta))
-  await setCurrentHole(nextHole)
-}
-
 async function toggleCompletion() {
-  if (!competition.value) {
-    return
-  }
-
+  if (!competition.value) return
   await mutateCompetition((draft) => {
     draft.status = draft.status === 'completed' ? 'in_progress' : 'completed'
   })
+  toast.success(
+    competition.value.status === 'completed'
+      ? 'Competition reopened.'
+      : 'Competition marked complete.',
+  )
+}
 
-  toast.success(competition.value.status === 'completed' ? 'Competition reopened.' : 'Competition marked complete.')
+function handleSubmitScore(value: number) {
+  const entity = openEntity.value
+  if (!entity) return
+  entity.update(value)
+  openEntityId.value = null
+}
+
+function scoreColor(value: number | null, par: number) {
+  if (value == null) return 'text-fw-ink'
+  const diff = value - par
+  if (diff <= -1) return 'text-fw-emerald'
+  if (diff >= 2) return 'text-fw-clay'
+  return 'text-fw-ink'
+}
+
+function scoreLabelShort(value: number, par: number) {
+  const diff = value - par
+  if (diff <= -2) return 'Eagle'
+  if (diff === -1) return 'Birdie'
+  if (diff === 0) return 'Par'
+  if (diff === 1) return 'Bogey'
+  if (diff === 2) return 'Double'
+  return `+${diff}`
 }
 </script>
 
 <template>
-  <div v-if="!competition" class="space-y-6">
-    <Empty class="min-h-[55svh] rounded-[2rem] border-border/80 bg-card/70 backdrop-blur">
-      <EmptyHeader>
-        <EmptyTitle>Competition not found</EmptyTitle>
-        <EmptyDescription>
-          The requested local round could not be loaded from IndexedDB.
-        </EmptyDescription>
-      </EmptyHeader>
+  <div>
+    <div v-if="!competition" class="flex min-h-[80svh] flex-col items-center justify-center gap-4 px-6 text-center">
+      <p class="font-serif text-2xl text-fw-ink">Competition not found</p>
+      <p class="text-sm text-fw-ink-soft">
+        The requested local round could not be loaded from IndexedDB.
+      </p>
       <Button variant="outline" class="rounded-full" @click="router.push('/')">
         Back to scoreboard
       </Button>
-    </Empty>
-  </div>
+    </div>
 
-  <div v-else class="space-y-6">
-    <Card class="rounded-[1.75rem] border-border/80 bg-card/70 backdrop-blur">
-      <CardHeader class="gap-5">
-        <div class="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-          <div class="space-y-3">
-            <div class="flex flex-wrap items-center gap-2">
-              <Badge variant="secondary" class="rounded-full">
-                {{ competition.status === 'completed' ? 'Completed' : 'Live round' }}
-              </Badge>
-              <Badge variant="outline" class="rounded-full">
-                {{ getFormatLabel(competition.format) }}
-              </Badge>
-              <Badge variant="outline" class="rounded-full">
-                {{ competition.courseSnapshot.clubName }}
-              </Badge>
+    <div
+      v-else
+      class="relative mx-auto flex min-h-[100svh] max-w-md flex-col bg-fw-bg text-fw-ink"
+    >
+      <!-- Header -->
+      <header class="flex items-center justify-between border-b border-fw-line-soft px-5 pb-3 pt-8">
+        <div class="flex min-w-0 items-center gap-2.5">
+          <div class="flex size-7 shrink-0 items-center justify-center rounded-lg bg-fw-accent">
+            <FlagIcon class="size-3.5 text-fw-bg" />
+          </div>
+          <div class="min-w-0">
+            <div class="truncate text-[15px] font-semibold tracking-tight text-fw-ink">
+              {{ competition.name }}
             </div>
-
-            <div>
-              <CardTitle class="text-3xl">
-                {{ competition.name }}
-              </CardTitle>
-              <CardDescription class="mt-2 text-base">
-                {{ new Date(competition.date).toLocaleDateString() }} · {{ competition.holes }} holes · {{ competition.players.length }} players
-              </CardDescription>
+            <div class="mt-0.5 font-mono text-[11px] uppercase tracking-wide text-fw-ink-muted">
+              {{ competition.courseSnapshot.clubName }} · {{ getFormatLabel(competition.format) }}
             </div>
           </div>
+        </div>
+        <button
+          type="button"
+          class="p-2 text-fw-ink"
+          aria-label="Menu"
+          @click="toggleCompletion"
+        >
+          <CheckCheckIcon v-if="competition.status !== 'completed'" class="size-4" />
+          <MenuIcon v-else class="size-4" />
+        </button>
+      </header>
 
-          <div class="flex flex-wrap gap-2">
-            <Button variant="outline" class="rounded-full" @click="toggleCompletion">
-              <CheckCheckIcon data-icon="inline-start" />
-              {{ competition.status === 'completed' ? 'Reopen round' : 'Mark complete' }}
-            </Button>
-          </div>
+      <!-- Hole switcher -->
+      <section class="px-0 pb-3 pt-4">
+        <div class="flex justify-center gap-1 overflow-x-auto px-4">
+          <button
+            v-for="hole in visibleHoles"
+            :key="hole.number"
+            type="button"
+            class="flex shrink-0 items-center justify-center font-serif tabular-nums transition-all"
+            :class="[
+              hole.number === competition.currentHole
+                ? 'size-11 rounded-[14px] bg-fw-accent text-base font-bold text-fw-bg'
+                : isHoleCompleted(hole.number)
+                  ? 'size-8 rounded-[10px] border border-fw-line bg-fw-surface text-sm font-medium text-fw-ink'
+                  : 'size-8 rounded-[10px] text-sm font-medium text-fw-ink-muted',
+            ]"
+            @click="setCurrentHole(hole.number)"
+          >
+            {{ hole.number }}
+          </button>
         </div>
 
-        <div class="grid gap-4 md:grid-cols-3">
-          <div class="rounded-[1.5rem] border border-border/80 bg-background/70 p-4">
-            <p class="text-xs font-semibold uppercase tracking-[0.24em] text-primary/70">
-              Current hole
-            </p>
-            <p class="mt-2 text-3xl font-semibold">
-              {{ competition.currentHole }}
-            </p>
-            <p class="text-sm text-muted-foreground">
-              {{ currentHole ? `Par ${currentHole.par} · SI ${currentHole.strokeIndex}` : 'Select a hole to score.' }}
-            </p>
-          </div>
-          <div class="rounded-[1.5rem] border border-border/80 bg-background/70 p-4">
-            <p class="text-xs font-semibold uppercase tracking-[0.24em] text-primary/70">
-              Completed holes
-            </p>
-            <p class="mt-2 text-3xl font-semibold">
-              {{ summary?.completeHoles ?? 0 }}
-            </p>
-            <p class="text-sm text-muted-foreground">
-              All selected scorecards entered through this point.
-            </p>
-          </div>
-          <div class="rounded-[1.5rem] border border-border/80 bg-background/70 p-4">
-            <p class="text-xs font-semibold uppercase tracking-[0.24em] text-primary/70">
-              Side games
-            </p>
-            <p class="mt-2 text-3xl font-semibold">
-              {{ competition.sideGames.length }}
-            </p>
-            <p class="text-sm text-muted-foreground">
-              {{ competition.sideGames.length > 0 ? 'Skins results update live as you score.' : 'No side game attached to this round.' }}
-            </p>
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent class="space-y-4">
-        <ScrollArea class="w-full">
-          <div class="flex gap-2 pb-3">
-            <Button
-              v-for="hole in holeDetails"
-              :key="hole.number"
-              :variant="competition.currentHole === hole.number ? 'default' : 'outline'"
-              class="min-w-14 rounded-full"
-              @click="setCurrentHole(hole.number)"
+        <div class="mt-4 flex items-baseline justify-between px-6">
+          <div>
+            <div class="font-mono text-[10px] uppercase tracking-[0.16em] text-fw-ink-muted">
+              Hole {{ competition.currentHole }}
+            </div>
+            <div
+              class="mt-0.5 font-serif text-[42px] font-medium leading-[48px] tracking-tight tabular-nums text-fw-ink"
             >
-              {{ hole.number }}
-            </Button>
+              Par {{ currentHole?.par ?? 4 }}
+            </div>
           </div>
-          <ScrollBar orientation="horizontal" />
-        </ScrollArea>
-
-        <div class="flex justify-between gap-3">
-          <Button variant="outline" class="rounded-full" :disabled="competition.currentHole === 1" @click="stepHole(-1)">
-            <ArrowLeftIcon data-icon="inline-start" />
-            Previous Hole
-          </Button>
-          <Button variant="outline" class="rounded-full" :disabled="competition.currentHole === competition.holes" @click="stepHole(1)">
-            Next Hole
-            <ArrowRightIcon data-icon="inline-end" />
-          </Button>
+          <div class="text-right">
+            <div class="flex items-baseline justify-end gap-2.5">
+              <span class="font-mono text-[10px] uppercase tracking-[0.16em] text-fw-ink-muted">SI</span>
+              <span class="font-serif text-[17px] font-medium tabular-nums text-fw-ink">
+                {{ currentHole?.strokeIndex ?? '–' }}
+              </span>
+            </div>
+            <div class="mt-0.5 flex items-baseline justify-end gap-2.5">
+              <span class="font-mono text-[10px] uppercase tracking-[0.16em] text-fw-ink-muted">Yards</span>
+              <span class="font-serif text-[17px] font-medium tabular-nums text-fw-ink">
+                {{ currentHole?.yardage ?? '–' }}
+              </span>
+            </div>
+          </div>
         </div>
-      </CardContent>
-    </Card>
+      </section>
 
-    <Tabs default-value="score" class="space-y-4">
-      <TabsList class="w-full justify-start rounded-full bg-card/80 p-1">
-        <TabsTrigger value="score" class="rounded-full px-5">
-          Score
-        </TabsTrigger>
-        <TabsTrigger value="leaderboard" class="rounded-full px-5">
-          Leaderboard
-        </TabsTrigger>
-        <TabsTrigger value="side-games" class="rounded-full px-5">
-          Side Games
-        </TabsTrigger>
-      </TabsList>
-
-      <TabsContent value="score" class="space-y-4">
-        <div class="grid gap-4 lg:grid-cols-2">
-          <ScoreControl
-            v-for="entity in scoreEntities"
-            :key="entity.id"
-            :label="entity.label"
-            :subtitle="entity.subtitle"
-            :badge="entity.badge"
-            :value="entity.value"
-            :par="entity.par"
-            @update="entity.update"
-          />
+      <!-- Skins ribbon -->
+      <div
+        v-if="summary?.skins"
+        class="mx-4 mb-0.5 flex items-center justify-between rounded-xl border border-fw-line bg-gradient-to-r from-fw-surface to-fw-surface-alt px-3.5 py-2.5"
+      >
+        <div class="flex items-center gap-2">
+          <div
+            class="flex size-4 items-center justify-center rounded-full bg-fw-gold font-serif text-[10px] font-bold text-fw-surface"
+          >
+            S
+          </div>
+          <span class="text-xs font-medium text-fw-ink">Skins · {{ summary.skins.mode }}</span>
         </div>
-      </TabsContent>
+        <span class="font-mono text-[11px] text-fw-ink-soft">
+          {{ summary.skins.holes.filter((h) => h.winnerLabel).length }}/{{ summary.skins.holes.length }} holes
+        </span>
+      </div>
 
-      <TabsContent value="leaderboard" class="space-y-4">
-        <Card class="rounded-[1.75rem] border-border/80 bg-card/70 backdrop-blur">
-          <CardHeader>
-            <CardTitle class="flex items-center gap-2">
-              <TrophyIcon class="size-5 text-primary" />
-              Live Leaderboard
-            </CardTitle>
-            <CardDescription>
-              Gross totals, net results, stableford points, and skins all update from the current hole scores.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <LeaderboardTable :entries="summary?.leaderboard ?? []" :format="competition.format" />
-          </CardContent>
-        </Card>
-      </TabsContent>
-
-      <TabsContent value="side-games" class="space-y-4">
-        <Card class="rounded-[1.75rem] border-border/80 bg-card/70 backdrop-blur">
-          <CardHeader>
-            <CardTitle class="flex items-center gap-2">
-              <FlagIcon class="size-5 text-primary" />
-              Side Games
-            </CardTitle>
-            <CardDescription>
-              Score-derived side game summaries live next to the round without any extra event tracking.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Empty v-if="!summary?.skins" class="rounded-[1.5rem] border-border/80 bg-background/70">
-              <EmptyHeader>
-                <EmptyTitle>No side game attached</EmptyTitle>
-                <EmptyDescription>
-                  Turn on skins during setup if you want gross or net hole winners to carry alongside the main leaderboard.
-                </EmptyDescription>
-              </EmptyHeader>
-            </Empty>
-
-            <div v-else class="space-y-4">
-              <div class="rounded-[1.5rem] border border-border/80 bg-background/70 p-4">
-                <p class="text-sm text-muted-foreground">
-                  Skins mode: <span class="font-medium text-foreground">{{ summary.skins.mode }}</span>
-                </p>
-              </div>
-
-              <div class="rounded-3xl border border-border/80 bg-background/65 p-2">
-                <LeaderboardTable :entries="summary.leaderboard.filter((entry) => (entry.skinsWon ?? 0) > -1)" :format="competition.format" />
-              </div>
-
-              <div class="grid gap-3 md:grid-cols-2">
-                <div
-                  v-for="hole in summary.skins.holes"
-                  :key="hole.hole"
-                  class="rounded-[1.5rem] border border-border/80 bg-background/70 p-4"
-                >
-                  <p class="text-xs font-semibold uppercase tracking-[0.24em] text-primary/70">
-                    Hole {{ hole.hole }}
-                  </p>
-                  <p class="mt-2 text-base font-medium">
-                    {{ hole.winnerLabel ?? 'Carryover' }}
-                  </p>
-                  <p class="text-sm text-muted-foreground">
-                    {{ hole.winnerLabel ? `${hole.carryValue} skin(s) won with ${hole.winningScore}` : `${hole.carryValue} skin(s) roll to the next hole` }}
-                  </p>
-                </div>
+      <!-- Player rows -->
+      <section class="flex-1 overflow-y-auto px-4 py-3.5">
+        <button
+          v-for="entity in entities"
+          :key="entity.id"
+          type="button"
+          class="mb-2 flex w-full items-center gap-3.5 rounded-2xl border border-fw-line bg-fw-surface px-4 py-3.5 text-left"
+          :aria-label="`Edit score for ${entity.label}`"
+          @click="openEntityId = entity.id"
+        >
+          <!-- Left: name + meta -->
+          <div class="min-w-0 flex-1">
+            <div class="flex items-center gap-2">
+              <span
+                class="block size-2 shrink-0 rounded-full border"
+                :style="{ backgroundColor: entity.teeColor, borderColor: 'var(--fw-line)' }"
+              />
+              <span class="truncate text-[15px] font-semibold tracking-tight text-fw-ink">
+                {{ entity.label }}
+              </span>
+            </div>
+            <div class="mt-1 flex items-center gap-2 pl-4">
+              <span class="font-mono text-[10px] tracking-wide text-fw-ink-muted">
+                PH {{ entity.playingHandicap }}
+              </span>
+              <div v-if="entity.strokesGiven > 0" class="flex items-center gap-0.5">
+                <span
+                  v-for="n in entity.strokesGiven"
+                  :key="n"
+                  class="block size-1 rounded-full bg-fw-accent"
+                />
+                <span class="ml-1 font-mono text-[9px] tracking-wide text-fw-ink-muted">
+                  stroke{{ entity.strokesGiven > 1 ? 's' : '' }}
+                </span>
               </div>
             </div>
-          </CardContent>
-        </Card>
-      </TabsContent>
-    </Tabs>
+          </div>
+
+          <!-- Center: score box -->
+          <div
+            class="flex size-16 shrink-0 flex-col items-center justify-center rounded-2xl"
+            :class="
+              entity.value != null
+                ? 'border-[1.5px] border-fw-line bg-transparent'
+                : 'border border-dashed border-fw-ink-dim bg-fw-bg'
+            "
+          >
+            <template v-if="entity.value != null">
+              <div
+                class="font-serif text-[34px] font-semibold leading-none tracking-tight tabular-nums"
+                :class="scoreColor(entity.value, currentHole?.par ?? 4)"
+              >
+                {{ entity.value }}
+              </div>
+              <div class="mt-1 font-mono text-[9px] uppercase tracking-wide text-fw-ink-muted">
+                {{ scoreLabelShort(entity.value, currentHole?.par ?? 4) }}
+              </div>
+            </template>
+            <template v-else>
+              <span class="font-serif text-2xl leading-none text-fw-ink-muted">+</span>
+            </template>
+          </div>
+
+          <!-- Right: points + total -->
+          <div class="min-w-[48px] text-right">
+            <div
+              class="font-serif text-2xl font-medium leading-none tabular-nums"
+              :class="entity.value != null ? 'text-fw-ink' : 'text-fw-ink-dim'"
+            >
+              {{
+                entity.value != null
+                  ? getStablefordPoints(currentHole?.par ?? 4, entity.value - entity.strokesGiven)
+                  : '–'
+              }}
+            </div>
+            <div class="mt-0.5 font-mono text-[9px] uppercase tracking-wide text-fw-ink-muted">
+              pts
+            </div>
+            <div class="mt-1.5 font-serif text-xs tabular-nums text-fw-ink-soft">
+              <span class="font-semibold text-fw-ink">{{ entity.totalPoints }}</span>
+              <span class="ml-0.5 text-[10px] text-fw-ink-muted">total</span>
+            </div>
+          </div>
+        </button>
+
+        <p class="py-2 text-center font-mono text-[10px] uppercase tracking-wider text-fw-ink-muted">
+          — tap a row to enter score —
+        </p>
+      </section>
+
+      <!-- Sticky leaderboard footer -->
+      <footer
+        class="border-t border-fw-line bg-fw-surface-alt px-5 pb-6 pt-3.5 shadow-[0_-8px_24px_rgba(0,0,0,0.04)]"
+      >
+        <div class="mb-2.5 flex items-baseline justify-between">
+          <div class="font-mono text-[10px] uppercase tracking-wider text-fw-ink-muted">
+            Leaderboard · thru {{ holesPlayed }}
+          </div>
+          <div class="text-[11px] text-fw-ink-soft">
+            {{ competition.status === 'completed' ? 'Final' : 'Live' }}
+          </div>
+        </div>
+        <ol class="space-y-1">
+          <li
+            v-for="(entity, index) in leaderboard"
+            :key="entity.id"
+            class="flex items-center justify-between py-0.5"
+          >
+            <div class="flex min-w-0 flex-1 items-center gap-2.5">
+              <span
+                class="w-3.5 shrink-0 font-mono text-[11px] tabular-nums text-fw-ink-muted"
+              >{{ index + 1 }}</span>
+              <span
+                class="block size-1.5 shrink-0 rounded-full border"
+                :style="{ backgroundColor: entity.teeColor, borderColor: 'var(--fw-line)' }"
+              />
+              <span
+                class="truncate text-[13px] tracking-tight text-fw-ink"
+                :class="index === 0 ? 'font-semibold' : 'font-medium'"
+              >
+                {{ entity.label }}
+              </span>
+              <span
+                v-if="index > 0"
+                class="font-mono text-[10px] text-fw-ink-muted"
+              >−{{ leaderboard[0].totalPoints - entity.totalPoints }}</span>
+            </div>
+            <div class="font-serif text-lg font-semibold tracking-tight tabular-nums text-fw-ink">
+              {{ entity.totalPoints }}
+              <span class="ml-0.5 font-mono text-[10px] font-normal text-fw-ink-muted">pts</span>
+            </div>
+          </li>
+        </ol>
+      </footer>
+
+      <NumberPadSheet
+        :open="openEntity != null"
+        :label="openEntity?.label ?? ''"
+        :hole-number="competition.currentHole"
+        :par="currentHole?.par ?? 4"
+        :strokes-given="openEntity?.strokesGiven ?? 0"
+        :current-value="openEntity?.value ?? null"
+        @close="openEntityId = null"
+        @submit="handleSubmitScore"
+      />
+    </div>
   </div>
 </template>

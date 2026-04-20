@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
-import { RouterView } from 'vue-router'
+import { RouterView, useRoute } from 'vue-router'
 import AppHeader from '@/components/app/AppHeader.vue'
 import AppSidebar from '@/components/app/AppSidebar.vue'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -11,8 +11,10 @@ import { usePlayersStore } from '@/stores/players'
 
 const playersStore = usePlayersStore()
 const competitionsStore = useCompetitionsStore()
+const route = useRoute()
 
 const ready = computed(() => playersStore.hydrated && competitionsStore.hydrated)
+const bareLayout = computed(() => route.meta.layout === 'bare')
 
 onMounted(async () => {
   await Promise.all([
@@ -23,7 +25,15 @@ onMounted(async () => {
 </script>
 
 <template>
-  <SidebarProvider>
+  <template v-if="bareLayout">
+    <RouterView v-if="ready" />
+    <div v-else class="flex min-h-[100svh] items-center justify-center bg-fw-bg">
+      <Skeleton class="h-40 w-64 rounded-3xl" />
+    </div>
+    <Toaster rich-colors position="top-right" />
+  </template>
+
+  <SidebarProvider v-else>
     <AppSidebar />
 
     <SidebarInset class="bg-[radial-gradient(circle_at_top,_rgba(31,122,88,0.08),_transparent_32%),linear-gradient(180deg,_rgba(246,240,223,0.96),_rgba(255,255,255,0.98))]">
