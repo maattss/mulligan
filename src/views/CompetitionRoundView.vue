@@ -2,7 +2,7 @@
 import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
-import { CheckCheckIcon, FlagIcon, MenuIcon } from 'lucide-vue-next'
+import { CheckCheckIcon, FlagIcon, RotateCcwIcon } from 'lucide-vue-next'
 import NumberPadSheet from '@/components/competition/NumberPadSheet.vue'
 import { Button } from '@/components/ui/button'
 import {
@@ -11,6 +11,7 @@ import {
   getCompetitionPlayerAdjustments,
   getFormatLabel,
   getStablefordPoints,
+  getStrokeAdjustments,
   type Competition,
 } from '@/lib/golf'
 import { useCompetitionsStore } from '@/stores/competitions'
@@ -49,7 +50,7 @@ type ScoreEntity = {
   strokesGiven: number
   value: number | null
   totalPoints: number
-  update: (value: number | null) => void
+  update: (value: number | null) => Promise<void>
 }
 
 const entities = computed<ScoreEntity[]>(() => {
@@ -64,17 +65,8 @@ const entities = computed<ScoreEntity[]>(() => {
       const teeSnapshot = current.players.find((p) => p.sideId === side.id)?.teeSnapshot
       const teeColor = teeSnapshot?.color ?? '#3B7A5C'
       const adjustments = teeSnapshot
-        ? Array.from({ length: pars.length }, (_, i) => {
-            const sideHandicap = side.playingHandicap ?? 0
-            return Math.floor(
-              sideHandicap / (teeSnapshot.strokeIndexes.length || 18) +
-                (teeSnapshot.strokeIndexes[i] <=
-                sideHandicap % (teeSnapshot.strokeIndexes.length || 18)
-                  ? 1
-                  : 0),
-            )
-          })
-        : []
+        ? getStrokeAdjustments(side.playingHandicap ?? 0, teeSnapshot.strokeIndexes)
+        : Array.from({ length: pars.length }, () => 0)
       let totalPts = 0
       sideScores.forEach((score, i) => {
         const par = pars[i] ?? 4
@@ -177,22 +169,34 @@ async function setCurrentHole(holeNumber: number) {
 
 async function toggleCompletion() {
   if (!competition.value) return
+  const previousStatus = competition.value.status
   await mutateCompetition((draft) => {
     draft.status = draft.status === 'completed' ? 'in_progress' : 'completed'
   })
   toast.success(
-    competition.value.status === 'completed'
+    previousStatus === 'completed'
       ? 'Competition reopened.'
       : 'Competition marked complete.',
   )
 }
 
-function handleSubmitScore(value: number) {
+const isSubmittingScore = ref(false)
+
+async function handleSubmitScore(value: number) {
   const entity = openEntity.value
-  if (!entity) return
-  entity.update(value)
-  openEntityId.value = null
+  if (!entity || isSubmittingScore.value) return
+  isSubmittingScore.value = true
+  try {
+    await entity.update(value)
+    openEntityId.value = null
+  } finally {
+    isSubmittingScore.value = false
+  }
 }
+
+const completionActionLabel = computed(() =>
+  competition.value?.status === 'completed' ? 'Reopen competition' : 'Mark competition complete',
+)
 
 function scoreColor(value: number | null, par: number) {
   if (value == null) return 'text-fw-ink'
@@ -247,11 +251,11 @@ function scoreLabelShort(value: number, par: number) {
         <button
           type="button"
           class="p-2 text-fw-ink"
-          aria-label="Menu"
+          :aria-label="completionActionLabel"
           @click="toggleCompletion"
         >
           <CheckCheckIcon v-if="competition.status !== 'completed'" class="size-4" />
-          <MenuIcon v-else class="size-4" />
+          <RotateCcwIcon v-else class="size-4" />
         </button>
       </header>
 

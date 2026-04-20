@@ -69,6 +69,7 @@ function press(key: string) {
     if (previewNum.value != null) emit('submit', previewNum.value)
     return
   }
+  if (key === '0' && input.value.length === 0) return
   if (input.value.length < 2) input.value = input.value + key
 }
 
