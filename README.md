@@ -1,21 +1,67 @@
-# Vue 3 + Vite
+# Mulligan
 
-This template should help get you started developing with Vue 3 in Vite. The template uses Vue 3 `<script setup>` SFCs, check out the [script setup docs](https://v3.vuejs.org/api/sfc-script-setup.html#sfc-script-setup) to learn more.
+Offline-first golf scoring for local competitions. Built for the Bergen/Stavanger
+scene — where the wind moves and the cell signal doesn't.
 
-While this project uses Vue.js, Vite supports many popular JS frameworks. [See all the supported frameworks](https://vitejs.dev/guide/#scaffolding-your-first-vite-project).
+Mulligan is a single-device PWA that one scorer runs for the whole group.
+Players, handicaps, and courses are stored locally (IndexedDB). The app works
+fully offline once loaded: the course catalog is bundled at build time and every
+round snapshots its course so scoring keeps working even if the source data
+changes later.
 
-## Deploy Your Own
+## What's inside
 
-Deploy your own Vite project with Vercel.
+- **Formats:** stroke play, Stableford, match play, four-ball stroke, four-ball
+  Stableford, 2-player scramble — all with proper handicap allowances.
+- **Skins** as an optional side game (gross or net) that lives alongside the
+  main leaderboard without extra event tracking.
+- **Scoring workspace:** single mobile-first screen — tap a player row, enter a
+  score via the number-pad bottom sheet, watch the leaderboard reorder live.
+- **Bundled course catalog** seeded from [GolfCourseAPI](https://golfcourseapi.com/)
+  via a developer-only sync script; no runtime API calls.
+- **No accounts, no backend.** v1 is one scorer, one device, a handful of buddies.
 
-[![Deploy with Vercel](https://vercel.com/button)]([https://vercel.com/new/clone?repository-url=https://github.com/vercel/examples/tree/main/framework-boilerplates/vite&template=vite](https://vercel.com/new/clone?demo-description=Vite%2FVue.js%20site%20that%20can%20be%20deployed%20to%20Vercel&demo-image=%2F%2Fimages.ctfassets.net%2Fe5382hct74si%2F2T4BUF3mEBKPJF3jcjU6nS%2F0d4a02e7c48091d13814a4ab513e8734%2FScreen_Shot_2022-04-13_at_10.05.56_PM.png&demo-title=Vite%20-%20Vue&demo-url=https%3A%2F%2Fvite-vue-template.vercel.app%2F&from=templates&project-name=Vite%20-%20Vue&repository-name=vite-vue&repository-url=https%3A%2F%2Fgithub.com%2Fvercel%2Fvercel%2Ftree%2Fmain%2Fexamples%2Fvite&skippable-integrations=1))
+## Tech
 
-_Live Example: https://vite-vue-template.vercel.app_
+Vue 3 · TypeScript · Vite · Pinia · Dexie · `vite-plugin-pwa` ·
+Tailwind CSS v4 with `shadcn/vue` primitives · Playwright for e2e.
 
-### Deploying From Your Terminal
+## Getting started
 
-You can deploy your new Vite project with a single command from your terminal using [Vercel CLI](https://vercel.com/download):
-
-```shell
-$ vercel
+```bash
+pnpm install
+pnpm dev           # Vite dev server
+pnpm build         # typecheck + production build
+pnpm test          # vitest unit tests
+pnpm test:e2e      # Playwright against the built app
 ```
+
+## Refreshing the course catalog
+
+The bundled catalog at `src/data/course-catalog.json` is regenerated from the
+manifest (`src/data/course-manifest.json`) via:
+
+```bash
+GOLF_COURSE_API_KEY=... pnpm sync:courses
+```
+
+Add or remove clubs in the manifest, re-run the script, and commit the updated
+JSON. Runtime code never talks to the provider.
+
+## Project layout
+
+```
+src/
+  views/        route-level screens (Dashboard, Players, CompetitionSetup, CompetitionRound)
+  components/   app/ shell, competition/ scoring widgets, players/ CRUD, ui/ shadcn primitives
+  stores/       Pinia stores (players, competitions) backed by Dexie
+  lib/          golf.ts (scoring/handicap math), db.ts, course-catalog.ts
+  data/         bundled course catalog + manifest
+plans/          design notes and architecture decisions
+tests/e2e/      Playwright flows
+scripts/        sync-courses.mjs (dev-only GolfCourseAPI importer)
+```
+
+See `plans/` for deeper design notes — the implementation plan documents the
+architecture decisions, and `app-overview.md` gives a plain-English tour of what
+the app does.
