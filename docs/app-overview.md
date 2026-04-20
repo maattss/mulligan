@@ -121,5 +121,5 @@ pure function) and consume it from there.
 - No WHS-compliant handicap calculation beyond per-round Playing Handicap
 - No tournament admin UI (brackets, schedules, pairings) beyond a single round
 
-If a feature would push one of those doors open, it goes in a plan doc first,
+If a feature would push one of those doors open, it goes in a docs note first,
 not straight into the UI.

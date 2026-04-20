@@ -156,7 +156,7 @@
 - A local API key for the sync script is acceptable, but no key or provider dependency ships in the production frontend.
 - The initial seeded catalog focuses on Bergen/Stavanger and can expand later by editing the course manifest and re-running the sync script.
 - Manual override files are acceptable for any Norwegian courses where GolfCourseAPI coverage is incomplete.
-- The implementation document should live at `plans/implementation-plan.md` once execution starts.
+- The implementation document should live at `docs/implementation-plan.md` once execution starts.
 - References:
   - [GolfCourseAPI](https://golfcourseapi.com/)
   - [shadcn/vue Vite installation](https://www.shadcn-vue.com/docs/installation/vite)

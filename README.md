@@ -57,11 +57,11 @@ src/
   stores/       Pinia stores (players, competitions) backed by Dexie
   lib/          golf.ts (scoring/handicap math), db.ts, course-catalog.ts
   data/         bundled course catalog + manifest
-plans/          design notes and architecture decisions
+docs/           design notes and architecture decisions
 tests/e2e/      Playwright flows
 scripts/        sync-courses.mjs (dev-only GolfCourseAPI importer)
 ```
 
-See `plans/` for deeper design notes — the implementation plan documents the
+See `docs/` for deeper design notes — the implementation plan documents the
 architecture decisions, and `app-overview.md` gives a plain-English tour of what
 the app does.
