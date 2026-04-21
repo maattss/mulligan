@@ -34,17 +34,17 @@ function formatDate(iso: string) {
   const date = new Date(iso)
   date.setHours(0, 0, 0, 0)
   if (date.getTime() === today.getTime()) {
-    return { top: 'TODAY', bottom: '·' }
+    return { top: 'I DAG', bottom: '·' }
   }
   return {
-    top: date.toLocaleDateString(undefined, { month: 'short' }).toUpperCase(),
+    top: date.toLocaleDateString('nb-NO', { month: 'short' }).toUpperCase(),
     bottom: String(date.getDate()),
   }
 }
 
 function progress(c: Competition) {
   const complete = buildCompetitionSummary(c).completeHoles
-  return `${complete} of ${c.holes}`
+  return `${complete} av ${c.holes}`
 }
 
 function leader(c: Competition) {
@@ -52,7 +52,7 @@ function leader(c: Competition) {
   const first = summary.leaderboard[0]
   if (!first || first.holesPlayed === 0) return null
   const isStableford = c.format === 'stableford' || c.format === 'fourball-stableford'
-  const value = isStableford ? `${first.stablefordPoints} pts` : `${first.netTotal} net`
+  const value = isStableford ? `${first.stablefordPoints} pts` : `${first.netTotal} netto`
   return { name: first.label, value }
 }
 </script>
@@ -62,16 +62,16 @@ function leader(c: Competition) {
     <header class="px-5 pt-[calc(3.5rem+var(--safe-top))] pb-4">
       <p data-mono class="text-[10px] text-[color:var(--color-ink-muted)]">Mulligan</p>
       <h1 data-num class="mt-1 text-[40px] font-medium leading-none tracking-[-0.04em] text-[color:var(--color-ink)]">
-        Competitions
+        Runder
       </h1>
     </header>
 
     <nav class="flex gap-5 border-b border-[color:var(--color-line)] px-5">
       <button
         v-for="t in [
-          { id: 'all' as Tab, label: 'All', count: competitionsStore.competitions.length },
-          { id: 'active' as Tab, label: 'Active', count: active.length },
-          { id: 'done' as Tab, label: 'Finished', count: finished.length },
+          { id: 'all' as Tab, label: 'Alle', count: competitionsStore.competitions.length },
+          { id: 'active' as Tab, label: 'Pågår', count: active.length },
+          { id: 'done' as Tab, label: 'Ferdig', count: finished.length },
         ]"
         :key="t.id"
         class="-mb-px border-b-[1.5px] pb-2.5 text-sm font-medium transition"
@@ -89,24 +89,24 @@ function leader(c: Competition) {
 
     <div v-if="competitionsStore.competitions.length === 0" class="flex flex-1 flex-col items-center justify-center px-8 text-center">
       <p data-num class="text-2xl font-medium tracking-tight text-[color:var(--color-ink)]">
-        No competitions yet
+        Ingen runder ennå
       </p>
       <p class="mt-2 text-sm text-[color:var(--color-ink-soft)]">
-        Start a round from your phone — no login required.
+        Start en runde fra telefonen — ingen innlogging.
       </p>
       <button
         data-testid="start-first-competition"
         class="mt-6 rounded-2xl bg-[color:var(--color-accent)] px-6 py-3 text-sm font-semibold text-[color:var(--color-bg)]"
         @click="router.push('/competitions/new')"
       >
-        Start first competition
+        Start første runde
       </button>
     </div>
 
     <div v-else class="flex-1">
       <section v-if="visibleActive.length > 0" class="mt-4">
         <p data-mono class="px-5 pb-2 text-[10px] text-[color:var(--color-ink-muted)]">
-          Active
+          Pågår
         </p>
         <ul>
           <li
@@ -138,7 +138,7 @@ function leader(c: Competition) {
 
       <section v-if="visibleFinished.length > 0" class="mt-5">
         <p data-mono class="px-5 pb-2 text-[10px] text-[color:var(--color-ink-muted)]">
-          Finished
+          Ferdig
         </p>
         <ul>
           <li
@@ -167,7 +167,7 @@ function leader(c: Competition) {
 
     <button
       data-testid="new-competition"
-      aria-label="New competition"
+      aria-label="Ny runde"
       class="absolute right-5 bottom-[calc(2rem+var(--safe-bottom))] flex h-14 w-14 items-center justify-center rounded-[20px] bg-[color:var(--color-accent)] text-[color:var(--color-bg)] shadow-[0_10px_30px_rgba(27,58,47,0.28),0_2px_6px_rgba(0,0,0,0.1)]"
       @click="router.push('/competitions/new')"
     >

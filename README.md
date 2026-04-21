@@ -1,21 +1,53 @@
-# Vue 3 + Vite
+# Mulligan
 
-This template should help get you started developing with Vue 3 in Vite. The template uses Vue 3 `<script setup>` SFCs, check out the [script setup docs](https://v3.vuejs.org/api/sfc-script-setup.html#sfc-script-setup) to learn more.
+Offline-first golf-scoring for lokale runder. En mobil-PWA som lar en gjeng golfere kjøre en turnering på telefonen uten innlogging, uten server — alt lagres lokalt i nettleseren.
 
-While this project uses Vue.js, Vite supports many popular JS frameworks. [See all the supported frameworks](https://vitejs.dev/guide/#scaffolding-your-first-vite-project).
+## Funksjoner
 
-## Deploy Your Own
+- **Flere formater**: Stroke Play, Stableford, Match Play, Four-Ball Stroke/Stableford, 2-manns Scramble.
+- **Handicap-beregning**: Course Handicap og Playing Handicap beregnes automatisk fra handicap-index, tee, slope og course rating.
+- **Live leaderboard**: Oppdateres mens du scorer, med netto, Stableford-poeng og match play-status.
+- **Sidegame**: Skins (gross/net) for stroke-baserte format.
+- **Offline-first**: Installerbar PWA. All data lagres i IndexedDB via Dexie.
+- **Banekatalog**: Lokale norske baner er pakket med appen (Bergen, Fana, Meland, Stavanger, Sola).
 
-Deploy your own Vite project with Vercel.
+## Teknisk
 
-[![Deploy with Vercel](https://vercel.com/button)]([https://vercel.com/new/clone?repository-url=https://github.com/vercel/examples/tree/main/framework-boilerplates/vite&template=vite](https://vercel.com/new/clone?demo-description=Vite%2FVue.js%20site%20that%20can%20be%20deployed%20to%20Vercel&demo-image=%2F%2Fimages.ctfassets.net%2Fe5382hct74si%2F2T4BUF3mEBKPJF3jcjU6nS%2F0d4a02e7c48091d13814a4ab513e8734%2FScreen_Shot_2022-04-13_at_10.05.56_PM.png&demo-title=Vite%20-%20Vue&demo-url=https%3A%2F%2Fvite-vue-template.vercel.app%2F&from=templates&project-name=Vite%20-%20Vue&repository-name=vite-vue&repository-url=https%3A%2F%2Fgithub.com%2Fvercel%2Fvercel%2Ftree%2Fmain%2Fexamples%2Fvite&skippable-integrations=1))
+- Vue 3 + `<script setup>` + TypeScript
+- Vite + vite-plugin-pwa
+- Pinia for state, Vue Router for navigasjon
+- Dexie (IndexedDB) for lagring
+- Tailwind CSS v4 + shadcn-vue komponenter
+- Vitest (enhetstester) + Playwright (e2e)
 
-_Live Example: https://vite-vue-template.vercel.app_
+## Kom i gang
 
-### Deploying From Your Terminal
+```bash
+pnpm install
+pnpm dev
+```
 
-You can deploy your new Vite project with a single command from your terminal using [Vercel CLI](https://vercel.com/download):
+### Nyttige kommandoer
 
-```shell
-$ vercel
+```bash
+pnpm build          # Type-sjekk og produksjonsbygg
+pnpm typecheck      # Bare TypeScript-sjekk
+pnpm test           # Kjør Vitest-tester én gang
+pnpm test:watch     # Vitest i watch-modus
+pnpm test:e2e       # Playwright end-to-end-tester
+pnpm sync:courses   # Hent/oppdater banekatalogen
+pnpm pwa:assets     # Generer PWA-ikoner
+```
+
+## Prosjektstruktur
+
+```
+src/
+  views/            Sidevisninger (liste, oppsett, runde, oppsummering)
+  components/ui/    shadcn-vue komponenter
+  stores/           Pinia-stores (spillere, runder)
+  lib/              Golf-regler, banekatalog, Dexie-db
+  data/             Banedata (JSON)
+  router/           Vue Router-oppsett
+tests/e2e/          Playwright-tester
 ```

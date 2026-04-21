@@ -294,7 +294,7 @@ describe('createCompetitionFromSetup + leaderboard', () => {
     const summary = buildCompetitionSummary(competition)
     expect(summary.leaderboard).toHaveLength(2)
     const leader = summary.leaderboard.find((entry) => entry.position === 1)
-    expect(leader?.matchStatus).toMatch(/Leading wins|Leading|All square/)
+    expect(leader?.matchStatus).toMatch(/Leder vinner|Leder|All square/)
   })
 
   it('builds a fourball-stroke leaderboard from per-side best ball', () => {

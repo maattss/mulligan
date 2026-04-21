@@ -103,7 +103,7 @@ function teeDotClass(color?: string) {
 }
 
 function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString(undefined, {
+  return new Date(iso).toLocaleDateString('nb-NO', {
     day: 'numeric',
     month: 'short',
     year: 'numeric',
@@ -117,7 +117,7 @@ function metricValue(entry: LeaderboardEntry) {
 
 function metricLabel() {
   if (isMatchPlay.value) return ''
-  return isStableford.value ? 'pts' : 'net'
+  return isStableford.value ? 'pts' : 'netto'
 }
 
 function exportText() {
@@ -127,7 +127,7 @@ function exportText() {
     `${c.name}`,
     `${formatDate(c.date)} · ${c.courseSnapshot.clubName} · ${getFormatLabel(c.format)}`,
     '',
-    'Results',
+    'Resultater',
     ...leaderboard.value.map((e, i) => `${i + 1}. ${e.label} — ${metricValue(e)} ${metricLabel()}`.trim()),
   ]
   const text = lines.join('\n')
@@ -149,7 +149,7 @@ function copyText(text: string) {
   <div v-if="competition" class="flex min-h-[100svh] flex-col pb-10">
     <header class="flex items-center justify-between px-5 pt-[calc(3.5rem+var(--safe-top))] pb-2.5">
       <button
-        aria-label="Back"
+        aria-label="Tilbake"
         class="flex items-center gap-1 p-1 text-[color:var(--color-ink-soft)]"
         @click="router.push('/')"
       >
@@ -161,7 +161,7 @@ function copyText(text: string) {
         class="rounded-2xl border border-[color:var(--color-line)] bg-[color:var(--color-surface)] px-3.5 py-1.5 text-[13px] font-medium text-[color:var(--color-ink)]"
         @click="exportText"
       >
-        Export
+        Del
       </button>
     </header>
 
@@ -182,7 +182,7 @@ function copyText(text: string) {
           </svg>
         </div>
         <div class="min-w-0 flex-1">
-          <p data-mono class="text-[10px] opacity-70">Winner</p>
+          <p data-mono class="text-[10px] opacity-70">Vinner</p>
           <p data-num class="mt-0.5 truncate text-[22px] font-medium tracking-[-0.02em]">
             {{ winner.label }}
           </p>
@@ -197,7 +197,7 @@ function copyText(text: string) {
     </div>
 
     <section class="px-5 pt-[22px] pb-2">
-      <p data-mono class="pb-2 text-[10px] text-[color:var(--color-ink-muted)]">Results</p>
+      <p data-mono class="pb-2 text-[10px] text-[color:var(--color-ink-muted)]">Resultater</p>
       <div class="overflow-hidden rounded-[16px] border border-[color:var(--color-line)] bg-[color:var(--color-surface)]">
         <div
           v-for="(entry, i) in leaderboard"
@@ -226,20 +226,20 @@ function copyText(text: string) {
     </section>
 
     <section class="px-5 pt-[22px] pb-2">
-      <p data-mono class="pb-2 text-[10px] text-[color:var(--color-ink-muted)]">Scorecard</p>
+      <p data-mono class="pb-2 text-[10px] text-[color:var(--color-ink-muted)]">Scorekort</p>
       <div class="overflow-hidden rounded-[16px] border border-[color:var(--color-line)] bg-[color:var(--color-surface)]">
         <div class="overflow-x-auto">
           <table class="w-full min-w-[680px] border-collapse">
             <thead>
               <tr class="bg-[color:var(--color-surface-alt)]">
-                <th class="py-2 pl-3.5 pr-1 text-left text-[12px] font-medium text-[color:var(--color-ink-soft)]" data-num>Hole</th>
+                <th class="py-2 pl-3.5 pr-1 text-left text-[12px] font-medium text-[color:var(--color-ink-soft)]" data-num>Hull</th>
                 <th
                   v-for="h in frontHoles"
                   :key="h.number"
                   class="px-1 py-2 text-center text-[12px] font-medium text-[color:var(--color-ink-soft)]"
                   data-num
                 >{{ h.number }}</th>
-                <th class="border-l border-[color:var(--color-line)] bg-[color:var(--color-surface-alt)] px-1 py-2 text-center text-[12px] font-medium text-[color:var(--color-ink-soft)]" data-num>Out</th>
+                <th class="border-l border-[color:var(--color-line)] bg-[color:var(--color-surface-alt)] px-1 py-2 text-center text-[12px] font-medium text-[color:var(--color-ink-soft)]" data-num>Ut</th>
                 <template v-if="backHoles.length">
                   <th
                     v-for="h in backHoles"
@@ -247,7 +247,7 @@ function copyText(text: string) {
                     class="px-1 py-2 text-center text-[12px] font-medium text-[color:var(--color-ink-soft)]"
                     data-num
                   >{{ h.number }}</th>
-                  <th class="border-l border-[color:var(--color-line)] bg-[color:var(--color-surface-alt)] px-1 py-2 text-center text-[12px] font-medium text-[color:var(--color-ink-soft)]" data-num>In</th>
+                  <th class="border-l border-[color:var(--color-line)] bg-[color:var(--color-surface-alt)] px-1 py-2 text-center text-[12px] font-medium text-[color:var(--color-ink-soft)]" data-num>Inn</th>
                 </template>
                 <th class="border-l border-[color:var(--color-line)] bg-[color:var(--color-surface-alt)] px-1 py-2 text-center text-[12px] font-medium text-[color:var(--color-ink-soft)]" data-num>Tot</th>
               </tr>
@@ -314,7 +314,7 @@ function copyText(text: string) {
     </section>
 
     <p data-mono class="mt-5 text-center text-[10px] text-[color:var(--color-ink-muted)]">
-      Saved locally · no login required
+      Lagret lokalt · ingen innlogging
     </p>
   </div>
 </template>

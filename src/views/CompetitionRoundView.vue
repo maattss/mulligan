@@ -161,7 +161,7 @@ function closePad() {
 async function setScore(id: string, gross: number | null) {
   const c = competition.value
   if (!c) return
-  const next: Competition = structuredClone(c)
+  const next: Competition = JSON.parse(JSON.stringify(c))
   const holeIndex = currentHole.value - 1
   if (isScramble.value) {
     const arr = next.scores.sideScores[id] ?? []
@@ -180,7 +180,7 @@ async function submitPad() {
   if (!padTarget.value) return
   const n = parseInt(padValue.value, 10)
   if (!Number.isFinite(n) || n <= 0) {
-    toast.error('Enter a positive score.')
+    toast.error('Skriv inn et positivt tall.')
     return
   }
   await setScore(padTarget.value, n)
@@ -209,10 +209,10 @@ async function finishRound() {
   const c = competition.value
   if (!c) return
   if (summary.value && summary.value.completeHoles < c.holes) {
-    const ok = confirm('Not all holes scored. Finish anyway?')
+    const ok = confirm('Ikke alle hull er scoret. Avslutt likevel?')
     if (!ok) return
   }
-  const next = structuredClone(c)
+  const next: Competition = JSON.parse(JSON.stringify(c))
   next.status = 'completed'
   await competitionsStore.saveCompetition(next)
   router.replace(`/competitions/${c.id}/review`)
@@ -232,7 +232,7 @@ const padQuick = computed(() => {
 
 const padPreviewLabel = computed(() => {
   const n = parseInt(padValue.value, 10)
-  if (!Number.isFinite(n)) return 'strokes'
+  if (!Number.isFinite(n)) return 'slag'
   return scoreLabel(n, padPar.value)
 })
 
@@ -276,7 +276,7 @@ function padTargetLabel() {
     <header class="flex items-center justify-between border-b border-[color:var(--color-line-soft)] px-4 pt-[calc(3.5rem+var(--safe-top))] pb-2.5">
       <div class="flex min-w-0 items-center gap-2.5">
         <button
-          aria-label="Back"
+          aria-label="Tilbake"
           class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg"
           @click="router.push('/')"
         >
@@ -302,7 +302,7 @@ function padTargetLabel() {
         class="rounded-full border border-[color:var(--color-line)] bg-[color:var(--color-surface)] px-3 py-1.5 text-[11px] font-medium text-[color:var(--color-ink)]"
         @click="finishRound"
       >
-        Finish
+        Avslutt
       </button>
     </header>
 
@@ -332,7 +332,7 @@ function padTargetLabel() {
 
       <div v-if="hole" class="mt-4 flex items-baseline justify-between px-2">
         <div>
-          <p data-mono class="text-[10px] text-[color:var(--color-ink-muted)]">Hole {{ currentHole }}</p>
+          <p data-mono class="text-[10px] text-[color:var(--color-ink-muted)]">Hull {{ currentHole }}</p>
           <p data-num class="mt-0.5 text-[42px] font-medium leading-none tracking-[-0.04em] text-[color:var(--color-ink)]">
             Par {{ hole.par }}
           </p>
@@ -343,7 +343,7 @@ function padTargetLabel() {
             <span data-num class="text-[17px] font-medium">{{ hole.strokeIndex }}</span>
           </div>
           <div class="flex items-baseline justify-end gap-2.5">
-            <span data-mono class="text-[10px] text-[color:var(--color-ink-muted)]">Yards</span>
+            <span data-mono class="text-[10px] text-[color:var(--color-ink-muted)]">Lengde</span>
             <span data-num class="text-[17px] font-medium">{{ hole.yardage }}</span>
           </div>
         </div>
@@ -439,13 +439,13 @@ function padTargetLabel() {
                   : '–') }}
             </span>
             <span data-mono class="mt-1 text-[9px] text-[color:var(--color-ink-muted)]">
-              {{ isStableford ? 'pts' : 'net' }}
+              {{ isStableford ? 'pts' : 'netto' }}
             </span>
             <span data-num class="mt-1.5 text-xs text-[color:var(--color-ink-soft)]">
               <span class="font-semibold text-[color:var(--color-ink)]">
                 {{ isStableford ? cumulativePoints(player) : cumulativeNet(player) }}
               </span>
-              <span class="text-[10px] text-[color:var(--color-ink-muted)]"> total</span>
+              <span class="text-[10px] text-[color:var(--color-ink-muted)]"> totalt</span>
             </span>
           </div>
         </button>
@@ -487,14 +487,14 @@ function padTargetLabel() {
       </template>
 
       <p data-mono class="mt-3 text-center text-[10px] text-[color:var(--color-ink-muted)]">
-        — tap a score to enter —
+        — trykk på et felt for å registrere —
       </p>
     </section>
 
     <footer class="absolute bottom-0 left-0 right-0 border-t border-[color:var(--color-line)] bg-[color:var(--color-surface-alt)] px-5 pt-3 pb-[calc(1.25rem+var(--safe-bottom))] shadow-[0_-8px_24px_rgba(0,0,0,0.04)]">
       <div class="flex items-baseline justify-between">
         <p data-mono class="text-[10px] text-[color:var(--color-ink-muted)]">
-          Leaderboard · thru {{ Math.max(0, currentHole - 1) }}
+          Leaderboard · etter {{ Math.max(0, currentHole - 1) }}
         </p>
       </div>
       <ul class="mt-2">
@@ -515,7 +515,7 @@ function padTargetLabel() {
           <div data-num class="text-[18px] font-semibold tracking-[-0.02em]">
             {{ isMatchPlay ? (entry.matchStatus ?? '–') : isStableford ? entry.stablefordPoints : entry.netTotal }}
             <span data-mono class="ml-0.5 text-[10px] font-normal text-[color:var(--color-ink-muted)]">
-              {{ isMatchPlay ? '' : isStableford ? 'pts' : 'net' }}
+              {{ isMatchPlay ? '' : isStableford ? 'pts' : 'netto' }}
             </span>
           </div>
         </li>
@@ -537,12 +537,12 @@ function padTargetLabel() {
         <div class="mb-3.5 flex items-start justify-between">
           <div>
             <p data-mono class="text-[10px] text-[color:var(--color-ink-muted)]">
-              {{ padTargetLabel() }} · Hole {{ currentHole }}
+              {{ padTargetLabel() }} · Hull {{ currentHole }}
             </p>
             <p data-num class="mt-0.5 text-[22px] font-medium tracking-[-0.02em]">Score</p>
           </div>
           <button
-            aria-label="Close"
+            aria-label="Lukk"
             class="flex h-8 w-8 items-center justify-center rounded-full bg-[color:var(--color-surface)]"
             @click="closePad"
           >
@@ -565,7 +565,7 @@ function padTargetLabel() {
             <p data-num class="text-[34px] leading-none font-medium tracking-[-0.02em]" :class="padPreviewPoints != null ? 'text-[color:var(--color-accent)]' : 'text-[color:var(--color-ink-dim)]'">
               {{ padPreviewPoints ?? '–' }}
             </p>
-            <p data-mono class="mt-1 text-[10px] text-[color:var(--color-ink-muted)]">points</p>
+            <p data-mono class="mt-1 text-[10px] text-[color:var(--color-ink-muted)]">poeng</p>
           </div>
         </div>
 
@@ -616,7 +616,7 @@ function padTargetLabel() {
             <button
               class="h-[54px] rounded-2xl border border-[color:var(--color-line)] bg-[color:var(--color-surface)] text-sm font-medium"
               @click="clearPadScore"
-            >Clear</button>
+            >Tøm</button>
             <button
               class="h-[54px] rounded-2xl border border-[color:var(--color-line)] bg-[color:var(--color-surface)] text-[26px] font-medium"
               data-num
@@ -633,7 +633,7 @@ function padTargetLabel() {
             :disabled="!padValue"
             @click="submitPad"
           >
-            Save score
+            Lagre score
           </button>
         </div>
       </div>
