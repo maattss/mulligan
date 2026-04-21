@@ -1,43 +1,9 @@
 <script setup lang="ts">
-import { computed, reactive, watch } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
-import {
-  CalculatorIcon,
-  CircleHelpIcon,
-  MapPinnedIcon,
-  TrophyIcon,
-  UsersRoundIcon,
-} from 'lucide-vue-next'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
-import {
-  Empty,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyTitle,
-} from '@/components/ui/empty'
-import {
-  Field,
-  FieldDescription,
-  FieldGroup,
-  FieldLabel,
-} from '@/components/ui/field'
-import { Input } from '@/components/ui/input'
-import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Separator } from '@/components/ui/separator'
-import { Switch } from '@/components/ui/switch'
-import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { getCourseById, getCourses } from '@/lib/course-catalog'
 import {
-  buildCompetitionSummary,
   COMPETITION_FORMATS,
   createCompetitionFromSetup,
   getDefaultAllowanceRule,
@@ -46,6 +12,7 @@ import {
   supportsSkins,
   type CompetitionFormat,
   type CompetitionSideGame,
+  type PlayerProfile,
   type SkinsMode,
 } from '@/lib/golf'
 import { useCompetitionsStore } from '@/stores/competitions'
@@ -56,44 +23,40 @@ const playersStore = usePlayersStore()
 const competitionsStore = useCompetitionsStore()
 const courses = getCourses()
 
+const STEPS = ['Format', 'Course', 'Players', 'Options', 'Start'] as const
+
+const step = ref(0)
+
 const form = reactive({
-  name: createDefaultCompetitionName(),
+  name: defaultName(),
   date: new Date().toISOString().slice(0, 10),
-  format: 'stroke' as CompetitionFormat,
+  format: 'stableford' as CompetitionFormat,
   holes: 18 as 9 | 18,
   courseId: courses[0]?.id ?? '',
-  allowancePercentage: 100,
   skinsEnabled: false,
   skinsMode: 'net' as SkinsMode,
 })
 
-const selections = reactive<Record<string, {
-  selected: boolean
-  teeId: string
-  sideId: string
-}>>({})
+type Selection = { selected: boolean; teeId: string; sideId: string }
+const selections = reactive<Record<string, Selection>>({})
+
+const newPlayerOpen = ref(false)
+const newPlayer = reactive({ name: '', handicapIndex: 18.4 })
 
 const selectedCourse = computed(() => getCourseById(form.courseId))
 const selectedPlayers = computed(() =>
-  playersStore.sortedPlayers.filter((player) => selections[player.id]?.selected),
+  playersStore.sortedPlayers.filter((p) => selections[p.id]?.selected),
 )
-
 const isTeamCompetition = computed(() => isTeamFormat(form.format))
-const requiresExactPair = computed(() => form.format === 'match-play')
+const requiresPair = computed(() => form.format === 'match-play')
 
 watch(
   () => [playersStore.sortedPlayers, selectedCourse.value?.id] as const,
   () => {
     const defaultTeeId = selectedCourse.value?.tees[0]?.id ?? ''
-
     for (const player of playersStore.sortedPlayers) {
-      selections[player.id] ??= {
-        selected: false,
-        teeId: defaultTeeId,
-        sideId: 'side-1',
-      }
-
-      if (!selectedCourse.value?.tees.some((tee) => tee.id === selections[player.id].teeId)) {
+      selections[player.id] ??= { selected: false, teeId: defaultTeeId, sideId: 'side-1' }
+      if (!selectedCourse.value?.tees.some((t) => t.id === selections[player.id].teeId)) {
         selections[player.id].teeId = defaultTeeId
       }
     }
@@ -104,98 +67,106 @@ watch(
 watch(
   () => form.format,
   (format) => {
-    const allowanceRule = getDefaultAllowanceRule(format)
-    if (allowanceRule.kind === 'percentage') {
-      form.allowancePercentage = allowanceRule.percentage * 100
-    }
-
-    if (!supportsSkins(format)) {
-      form.skinsEnabled = false
-    }
-
+    if (!supportsSkins(format)) form.skinsEnabled = false
     autoAssignSides()
   },
   { immediate: true },
 )
 
 watch(
-  () => selectedPlayers.value.map((player) => player.id).join(','),
-  () => {
-    autoAssignSides()
-  },
+  () => selectedPlayers.value.map((p) => p.id).join(','),
+  () => autoAssignSides(),
 )
 
-const validationMessage = computed(() => {
-  if (!selectedCourse.value) {
-    return 'Choose a course from the bundled catalog.'
-  }
-
-  if (!form.name.trim()) {
-    return 'Give the competition a name.'
-  }
-
-  if (selectedPlayers.value.length === 0) {
-    return 'Select at least one player.'
-  }
-
-  if (requiresExactPair.value && selectedPlayers.value.length !== 2) {
-    return 'Individual match play requires exactly 2 players.'
-  }
-
-  if ((form.format === 'stroke' || form.format === 'stableford') && selectedPlayers.value.length < 2) {
-    return 'Individual competitions need at least 2 players.'
-  }
-
+const issue = computed(() => {
+  if (!form.name.trim()) return 'Name the round.'
+  if (!selectedCourse.value) return 'Choose a course.'
+  if (selectedPlayers.value.length === 0) return 'Select at least one player.'
+  if (requiresPair.value && selectedPlayers.value.length !== 2) return 'Match play needs 2 players.'
+  if ((form.format === 'stroke' || form.format === 'stableford') && selectedPlayers.value.length < 2)
+    return 'Add at least 2 players.'
   if (isTeamCompetition.value) {
     if (selectedPlayers.value.length < 4 || selectedPlayers.value.length % 2 !== 0) {
-      return 'Team formats need an even number of players and at least 4 selected.'
+      return 'Team formats need an even count, 4+.'
     }
-
-    const sideCounts = selectedPlayers.value.reduce<Record<string, number>>((counts, player) => {
-      const sideId = selections[player.id]?.sideId
-      counts[sideId] = (counts[sideId] ?? 0) + 1
-      return counts
+    const counts = selectedPlayers.value.reduce<Record<string, number>>((acc, p) => {
+      const sid = selections[p.id].sideId
+      acc[sid] = (acc[sid] ?? 0) + 1
+      return acc
     }, {})
-
-    if (!Object.values(sideCounts).every((count) => count === 2)) {
-      return 'Each side must contain exactly 2 players.'
-    }
+    if (!Object.values(counts).every((c) => c === 2)) return 'Each side must have exactly 2 players.'
   }
-
   return ''
 })
 
-async function createCompetition() {
-  if (validationMessage.value) {
-    toast.error(validationMessage.value)
+const canAdvance = computed(() => {
+  switch (step.value) {
+    case 0:
+      return !!form.name.trim()
+    case 1:
+      return !!selectedCourse.value
+    case 2:
+      return (
+        selectedPlayers.value.length > 0 &&
+        (!requiresPair.value || selectedPlayers.value.length === 2) &&
+        (!isTeamCompetition.value || (selectedPlayers.value.length >= 4 && selectedPlayers.value.length % 2 === 0))
+      )
+    case 3:
+      return true
+    case 4:
+      return !issue.value
+    default:
+      return false
+  }
+})
+
+async function advance() {
+  if (step.value === STEPS.length - 1) {
+    await startRound()
     return
   }
+  step.value = Math.min(STEPS.length - 1, step.value + 1)
+}
 
+function back() {
+  if (step.value === 0) {
+    router.push('/')
+    return
+  }
+  step.value = Math.max(0, step.value - 1)
+}
+
+function togglePlayer(id: string) {
+  selections[id].selected = !selections[id].selected
+}
+
+async function addInlinePlayer() {
+  if (!newPlayer.name.trim()) {
+    toast.error('Enter a name.')
+    return
+  }
+  const saved = await playersStore.savePlayer({
+    name: newPlayer.name,
+    handicapIndex: Number(newPlayer.handicapIndex),
+  })
+  const defaultTeeId = selectedCourse.value?.tees[0]?.id ?? ''
+  selections[saved.id] = { selected: true, teeId: defaultTeeId, sideId: 'side-1' }
+  newPlayer.name = ''
+  newPlayer.handicapIndex = 18.4
+  newPlayerOpen.value = false
+}
+
+async function startRound() {
+  if (issue.value) {
+    toast.error(issue.value)
+    return
+  }
   const course = selectedCourse.value
-
-  if (!course) {
-    toast.error('The selected course could not be found in the catalog.')
-    return
-  }
+  if (!course) return
 
   const allowanceRule = getDefaultAllowanceRule(form.format)
-  const finalAllowance = allowanceRule.kind === 'percentage'
-    ? {
-        ...allowanceRule,
-        percentage: form.allowancePercentage / 100,
-        label: `${form.allowancePercentage}% handicap allowance`,
-      }
-    : allowanceRule
-
   const sideGames: CompetitionSideGame[] = form.skinsEnabled
-    ? [
-        {
-          id: crypto.randomUUID(),
-          type: 'skins',
-          enabled: true,
-          mode: form.skinsMode,
-        },
-      ]
+    ? [{ id: crypto.randomUUID(), type: 'skins', enabled: true, mode: form.skinsMode }]
     : []
 
   const competition = createCompetitionFromSetup(
@@ -205,349 +176,373 @@ async function createCompetition() {
       holes: form.holes,
       format: form.format,
       courseId: course.id,
-      players: selectedPlayers.value.map((player) => ({
-        playerId: player.id,
-        teeId: selections[player.id].teeId,
-        sideId: isTeamCompetition.value ? selections[player.id].sideId : undefined,
+      players: selectedPlayers.value.map((p) => ({
+        playerId: p.id,
+        teeId: selections[p.id].teeId,
+        sideId: isTeamCompetition.value ? selections[p.id].sideId : undefined,
       })),
       sideGames,
-      allowanceRule: finalAllowance,
+      allowanceRule,
     },
     playersStore.sortedPlayers,
     course,
   )
 
   await competitionsStore.saveCompetition(competition)
-  toast.success('Competition created.')
-
-  const summary = buildCompetitionSummary(competition)
-  if (summary.leaderboard.length === 0) {
-    toast.info('Round created. Start entering hole scores.')
-  }
-
-  await router.push(`/competitions/${competition.id}`)
+  toast.success('Round ready.')
+  router.push(`/competitions/${competition.id}`)
 }
 
 function autoAssignSides() {
-  if (!isTeamCompetition.value) {
-    return
-  }
-
-  selectedPlayers.value.forEach((player, index) => {
-    const sideNumber = Math.floor(index / 2) + 1
-    selections[player.id].sideId = `side-${sideNumber}`
+  if (!isTeamCompetition.value) return
+  selectedPlayers.value.forEach((p, i) => {
+    selections[p.id].sideId = `side-${Math.floor(i / 2) + 1}`
   })
 }
 
-function createDefaultCompetitionName() {
-  const date = new Date()
-  return `Buddy Game ${date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`
+function defaultName() {
+  const d = new Date()
+  return `${d.toLocaleDateString(undefined, { weekday: 'long' })} round`
+}
+
+function teeDotClass(color: string) {
+  switch (color) {
+    case 'red':
+      return 'bg-[color:var(--color-tee-red)]'
+    case 'yellow':
+      return 'bg-[color:var(--color-tee-yellow)]'
+    case 'blue':
+      return 'bg-[color:var(--color-tee-blue)]'
+    case 'black':
+      return 'bg-[color:var(--color-ink)]'
+    case 'white':
+      return 'bg-[color:var(--color-tee-white)] border border-[color:var(--color-line)]'
+    default:
+      return 'bg-[color:var(--color-tee-green)]'
+  }
+}
+
+function initials(name: string) {
+  return name
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? '')
+    .join('')
 }
 </script>
 
 <template>
-  <div class="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-    <div class="space-y-6">
-      <Card class="rounded-[1.75rem] border-border/80 bg-card/70 backdrop-blur">
-        <CardHeader>
-          <CardTitle>Competition Basics</CardTitle>
-          <CardDescription>
-            Name the round, choose the format, and decide whether you are scoring 9 or 18 holes.
-          </CardDescription>
-        </CardHeader>
-        <CardContent class="space-y-6">
-          <FieldGroup>
-            <Field>
-              <FieldLabel for="competition-name">
-                Competition Name
-              </FieldLabel>
-              <Input id="competition-name" v-model="form.name" />
-            </Field>
-
-            <Field>
-              <FieldLabel for="competition-date">
-                Date
-              </FieldLabel>
-              <Input id="competition-date" v-model="form.date" type="date" />
-            </Field>
-          </FieldGroup>
-
-          <Field class="gap-3">
-            <FieldLabel>Format</FieldLabel>
-            <ToggleGroup v-model="form.format" type="single" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              <ToggleGroupItem
-                v-for="format in COMPETITION_FORMATS"
-                :key="format"
-                :value="format"
-                class="h-auto min-h-20 rounded-2xl border border-border/70 px-4 py-4 text-left data-[state=on]:border-primary data-[state=on]:bg-primary/10"
-              >
-                <div class="flex flex-col items-start gap-2">
-                  <span class="font-medium">{{ getFormatLabel(format) }}</span>
-                  <span class="text-xs text-muted-foreground">
-                    {{ format }}
-                  </span>
-                </div>
-              </ToggleGroupItem>
-            </ToggleGroup>
-          </Field>
-
-          <Field class="gap-3">
-            <FieldLabel>Holes</FieldLabel>
-            <ToggleGroup v-model="form.holes" type="single" class="gap-3">
-              <ToggleGroupItem :value="9" class="rounded-full px-6">
-                9 holes
-              </ToggleGroupItem>
-              <ToggleGroupItem :value="18" class="rounded-full px-6">
-                18 holes
-              </ToggleGroupItem>
-            </ToggleGroup>
-          </Field>
-
-          <Field v-if="getDefaultAllowanceRule(form.format).kind === 'percentage'">
-            <FieldLabel for="allowance-percentage">
-              Allowance Percentage
-            </FieldLabel>
-            <Input
-              id="allowance-percentage"
-              v-model="form.allowancePercentage"
-              type="number"
-              min="0"
-              max="100"
-              step="1"
-            />
-            <FieldDescription>
-              Default policy for this format is {{ getDefaultAllowanceRule(form.format).label.toLowerCase() }}.
-            </FieldDescription>
-          </Field>
-        </CardContent>
-      </Card>
-
-      <Card class="rounded-[1.75rem] border-border/80 bg-card/70 backdrop-blur">
-        <CardHeader>
-          <CardTitle>Course And Tees</CardTitle>
-          <CardDescription>
-            Pick a bundled local course and assign tees per player before the competition snapshot is created.
-          </CardDescription>
-        </CardHeader>
-        <CardContent class="space-y-6">
-          <Field>
-            <FieldLabel>Course</FieldLabel>
-            <Select v-model="form.courseId">
-              <SelectTrigger>
-                <SelectValue placeholder="Choose a course" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  <SelectItem v-for="course in courses" :key="course.id" :value="course.id">
-                    {{ course.clubName }} · {{ course.city }}
-                  </SelectItem>
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-          </Field>
-
-          <div v-if="selectedCourse" class="rounded-[1.5rem] border border-border/80 bg-background/70 p-4">
-            <div class="flex items-start justify-between gap-4">
-              <div>
-                <p class="text-xs font-semibold uppercase tracking-[0.24em] text-primary/70">
-                  Course Snapshot
-                </p>
-                <h3 class="mt-2 text-lg font-semibold">
-                  {{ selectedCourse.clubName }}
-                </h3>
-                <p class="text-sm text-muted-foreground">
-                  {{ selectedCourse.courseName }} · {{ selectedCourse.city }}, {{ selectedCourse.region }}
-                </p>
-              </div>
-              <Badge variant="secondary" class="rounded-full">
-                {{ selectedCourse.holes }} holes
-              </Badge>
-            </div>
-
-            <Separator class="my-4" />
-
-            <div class="flex flex-wrap gap-2">
-              <Badge
-                v-for="tee in selectedCourse.tees"
-                :key="tee.id"
-                variant="outline"
-                class="rounded-full"
-              >
-                {{ tee.name }} · {{ tee.courseRating }} / {{ tee.slopeRating }}
-              </Badge>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+  <div class="flex min-h-[100svh] flex-col bg-[color:var(--color-bg)]">
+    <div class="flex items-center justify-between px-5 pt-[calc(3.5rem+var(--safe-top))] pb-2">
+      <button class="flex items-center gap-1 text-[15px] text-[color:var(--color-ink-soft)]" @click="back">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <path d="M10 3L5 8l5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+        {{ step === 0 ? 'Cancel' : 'Back' }}
+      </button>
+      <span data-mono class="text-[10px] text-[color:var(--color-ink-muted)]">
+        Step {{ step + 1 }}/{{ STEPS.length }}
+      </span>
     </div>
 
-    <div class="space-y-6">
-      <Card class="rounded-[1.75rem] border-border/80 bg-card/70 backdrop-blur">
-        <CardHeader>
-          <CardTitle>Players And Side Games</CardTitle>
-          <CardDescription>
-            Select the buddies playing today, then let the app carry their names and handicaps into the round.
-          </CardDescription>
-        </CardHeader>
-        <CardContent class="space-y-6">
-          <Empty v-if="playersStore.sortedPlayers.length === 0" class="rounded-[1.5rem] border-border/80 bg-background/70">
-            <EmptyHeader>
-              <EmptyTitle>No player profiles yet</EmptyTitle>
-              <EmptyDescription>
-                Create a few players first so this competition can snapshot their handicaps correctly.
-              </EmptyDescription>
-            </EmptyHeader>
-            <Button as-child variant="outline" class="rounded-full">
-              <RouterLink to="/players">
-                <UsersRoundIcon data-icon="inline-start" />
-                Go to Players
-              </RouterLink>
-            </Button>
-          </Empty>
+    <div class="flex gap-1 px-5 pt-1 pb-3">
+      <div
+        v-for="(_, i) in STEPS"
+        :key="i"
+        class="h-[3px] flex-1 rounded-sm transition"
+        :class="i <= step ? 'bg-[color:var(--color-accent)]' : 'bg-[color:var(--color-line-soft)]'"
+      />
+    </div>
 
-          <div v-else class="grid gap-4">
+    <div class="flex-1 overflow-y-auto px-5 pb-4">
+      <h2 data-num class="text-[32px] font-medium leading-none tracking-[-0.03em] text-[color:var(--color-ink)]">
+        {{ STEPS[step] }}
+      </h2>
+
+      <!-- Step 0: Format -->
+      <div v-if="step === 0" class="mt-6">
+        <label class="block">
+          <span data-mono class="text-[10px] text-[color:var(--color-ink-muted)]">Name</span>
+          <input
+            v-model="form.name"
+            class="mt-1.5 w-full rounded-2xl border border-[color:var(--color-line)] bg-[color:var(--color-surface)] px-4 py-3 text-[15px] outline-none focus:border-[color:var(--color-accent)]"
+          />
+        </label>
+
+        <p data-mono class="mt-5 text-[10px] text-[color:var(--color-ink-muted)]">Format</p>
+        <div class="mt-2 grid grid-cols-2 gap-2">
+          <button
+            v-for="f in COMPETITION_FORMATS"
+            :key="f"
+            class="rounded-2xl border px-3 py-3 text-left text-[13px] transition"
+            :class="form.format === f
+              ? 'border-[color:var(--color-accent)] bg-[color:var(--color-accent)] text-[color:var(--color-bg)]'
+              : 'border-[color:var(--color-line)] bg-[color:var(--color-surface)] text-[color:var(--color-ink)]'"
+            @click="form.format = f"
+          >
+            {{ getFormatLabel(f) }}
+          </button>
+        </div>
+
+        <p data-mono class="mt-5 text-[10px] text-[color:var(--color-ink-muted)]">Holes</p>
+        <div class="mt-2 flex gap-2">
+          <button
+            v-for="n in [9, 18] as const"
+            :key="n"
+            class="flex-1 rounded-full border py-2.5 text-sm font-medium transition"
+            :class="form.holes === n
+              ? 'border-[color:var(--color-accent)] bg-[color:var(--color-accent)] text-[color:var(--color-bg)]'
+              : 'border-[color:var(--color-line)] bg-[color:var(--color-surface)] text-[color:var(--color-ink)]'"
+            @click="form.holes = n"
+          >
+            {{ n }} holes
+          </button>
+        </div>
+      </div>
+
+      <!-- Step 1: Course -->
+      <div v-if="step === 1" class="mt-6">
+        <p class="text-sm text-[color:var(--color-ink-soft)]">Pick a local course from the bundled catalog.</p>
+        <div class="mt-3 overflow-hidden rounded-2xl border border-[color:var(--color-line)] bg-[color:var(--color-surface)]">
+          <button
+            v-for="course in courses"
+            :key="course.id"
+            class="flex w-full items-center justify-between border-b border-[color:var(--color-line-soft)] px-4 py-3.5 text-left last:border-b-0"
+            @click="form.courseId = course.id"
+          >
+            <div class="min-w-0">
+              <p class="text-[15px] font-semibold tracking-tight text-[color:var(--color-ink)]">{{ course.clubName }}</p>
+              <p class="mt-0.5 text-xs text-[color:var(--color-ink-soft)]">{{ course.courseName }} · {{ course.city }}</p>
+            </div>
             <div
-              v-for="player in playersStore.sortedPlayers"
-              :key="player.id"
-              class="rounded-[1.5rem] border border-border/80 bg-background/70 p-4"
+              class="h-5 w-5 flex-shrink-0 rounded-full border-2"
+              :class="form.courseId === course.id
+                ? 'border-[color:var(--color-accent)] bg-[color:var(--color-accent)]'
+                : 'border-[color:var(--color-line)]'"
+            />
+          </button>
+        </div>
+
+        <div v-if="selectedCourse" class="mt-4 rounded-2xl border border-[color:var(--color-line)] bg-[color:var(--color-surface-alt)] p-4">
+          <p data-mono class="text-[10px] text-[color:var(--color-ink-muted)]">Tees</p>
+          <div class="mt-2 space-y-1.5">
+            <div
+              v-for="tee in selectedCourse.tees"
+              :key="tee.id"
+              class="flex items-center justify-between text-[13px]"
             >
-              <div class="flex flex-col gap-4">
-                <div class="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <p class="text-base font-semibold">
-                      {{ player.name }}
-                    </p>
-                    <p class="text-sm text-muted-foreground">
-                      {{ player.homeClub ?? 'No home club saved' }}
-                    </p>
-                  </div>
-                  <Badge variant="secondary" class="rounded-full">
-                    HI {{ player.handicapIndex.toFixed(1) }}
-                  </Badge>
-                </div>
-
-                <div class="flex items-center justify-between gap-3 rounded-2xl border border-border/70 bg-card/40 px-4 py-3">
-                  <div>
-                    <p class="font-medium">Include in this competition</p>
-                    <p class="text-sm text-muted-foreground">
-                      Snapshot the player and choose the tee before the round starts.
-                    </p>
-                  </div>
-                  <Switch v-model="selections[player.id].selected" />
-                </div>
-
-                <div v-if="selections[player.id].selected" class="grid gap-3">
-                  <Field>
-                    <FieldLabel>Tee</FieldLabel>
-                    <Select v-model="selections[player.id].teeId">
-                      <SelectTrigger>
-                        <SelectValue placeholder="Choose tee" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectGroup>
-                          <SelectItem v-for="tee in selectedCourse?.tees ?? []" :key="tee.id" :value="tee.id">
-                            {{ tee.name }} · {{ tee.courseRating }} / {{ tee.slopeRating }}
-                          </SelectItem>
-                        </SelectGroup>
-                      </SelectContent>
-                    </Select>
-                  </Field>
-
-                  <div v-if="isTeamCompetition" class="rounded-2xl border border-border/70 bg-card/40 px-4 py-3 text-sm text-muted-foreground">
-                    Auto-assigned to {{ selections[player.id].sideId.replace('-', ' ').toUpperCase() }}
-                  </div>
-                </div>
+              <div class="flex items-center gap-2">
+                <span class="h-2.5 w-2.5 rounded-full" :class="teeDotClass(tee.color)" />
+                <span>{{ tee.name }}</span>
               </div>
+              <span data-mono class="text-[10px] text-[color:var(--color-ink-muted)]">
+                CR {{ tee.courseRating }} · SR {{ tee.slopeRating }}
+              </span>
             </div>
           </div>
+        </div>
+      </div>
 
-          <Separator />
+      <!-- Step 2: Players -->
+      <div v-if="step === 2" class="mt-6">
+        <p class="text-sm text-[color:var(--color-ink-soft)]">
+          Select the buddies playing. Handicap index and tee drive the stroke allocation.
+        </p>
 
-          <div class="space-y-4 rounded-[1.5rem] border border-border/80 bg-background/70 p-4">
-            <div class="flex items-start justify-between gap-4">
-              <div>
-                <p class="font-medium">Skins side game</p>
-                <p class="text-sm text-muted-foreground">
-                  Available on stroke-based formats only.
+        <div v-if="playersStore.sortedPlayers.length > 0" class="mt-4 overflow-hidden rounded-2xl border border-[color:var(--color-line)] bg-[color:var(--color-surface)]">
+          <div
+            v-for="p in playersStore.sortedPlayers"
+            :key="p.id"
+            class="border-b border-[color:var(--color-line-soft)] last:border-b-0"
+          >
+            <button class="flex w-full items-center gap-3 px-4 py-3 text-left" @click="togglePlayer(p.id)">
+              <div class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-[color:var(--color-bg)]">
+                <span data-num class="text-[12px] font-semibold">{{ initials(p.name) }}</span>
+              </div>
+              <div class="min-w-0 flex-1">
+                <p class="truncate text-[15px] font-medium text-[color:var(--color-ink)]">{{ p.name }}</p>
+                <p data-mono class="mt-0.5 text-[10px] text-[color:var(--color-ink-muted)]">
+                  Index {{ p.handicapIndex.toFixed(1) }}
                 </p>
               </div>
-              <Switch :disabled="!supportsSkins(form.format)" v-model="form.skinsEnabled" />
-            </div>
+              <div
+                class="h-5 w-5 rounded-md border-2"
+                :class="selections[p.id]?.selected
+                  ? 'border-[color:var(--color-accent)] bg-[color:var(--color-accent)]'
+                  : 'border-[color:var(--color-line)]'"
+              >
+                <svg v-if="selections[p.id]?.selected" width="16" height="16" viewBox="0 0 16 16" class="text-[color:var(--color-bg)]">
+                  <path d="M3 8l3.5 3.5L13 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+              </div>
+            </button>
 
-            <Field v-if="form.skinsEnabled">
-              <FieldLabel>Skins Mode</FieldLabel>
-              <ToggleGroup v-model="form.skinsMode" type="single" class="gap-3">
-                <ToggleGroupItem value="gross" class="rounded-full px-6">
-                  Gross
-                </ToggleGroupItem>
-                <ToggleGroupItem value="net" class="rounded-full px-6">
-                  Net
-                </ToggleGroupItem>
-              </ToggleGroup>
-            </Field>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card class="rounded-[1.75rem] border-border/80 bg-card/70 backdrop-blur">
-        <CardHeader>
-          <CardTitle>Pre-Round Check</CardTitle>
-          <CardDescription>
-            The whole round is snapshotted locally when you start the competition.
-          </CardDescription>
-        </CardHeader>
-        <CardContent class="space-y-4">
-          <div class="grid gap-3 sm:grid-cols-2">
-            <div class="rounded-2xl border border-border/80 bg-background/70 p-4">
-              <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.24em] text-primary/70">
-                <TrophyIcon class="size-4" />
-                Format
-              </p>
-              <p class="mt-2 text-base font-medium">
-                {{ getFormatLabel(form.format) }}
-              </p>
-            </div>
-            <div class="rounded-2xl border border-border/80 bg-background/70 p-4">
-              <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.24em] text-primary/70">
-                <MapPinnedIcon class="size-4" />
-                Course
-              </p>
-              <p class="mt-2 text-base font-medium">
-                {{ selectedCourse?.clubName ?? 'Choose a course' }}
-              </p>
-            </div>
-            <div class="rounded-2xl border border-border/80 bg-background/70 p-4">
-              <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.24em] text-primary/70">
-                <UsersRoundIcon class="size-4" />
-                Selected players
-              </p>
-              <p class="mt-2 text-base font-medium">
-                {{ selectedPlayers.length }}
-              </p>
-            </div>
-            <div class="rounded-2xl border border-border/80 bg-background/70 p-4">
-              <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.24em] text-primary/70">
-                <CalculatorIcon class="size-4" />
-                Allowance
-              </p>
-              <p class="mt-2 text-base font-medium">
-                {{ getDefaultAllowanceRule(form.format).kind === 'percentage' ? `${form.allowancePercentage}%` : getDefaultAllowanceRule(form.format).label }}
-              </p>
+            <div v-if="selections[p.id]?.selected" class="flex items-center gap-2 px-4 pt-1 pb-3">
+              <span data-mono class="text-[10px] text-[color:var(--color-ink-muted)]">Tee</span>
+              <div class="flex flex-wrap gap-1.5">
+                <button
+                  v-for="tee in selectedCourse?.tees ?? []"
+                  :key="tee.id"
+                  class="flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium transition"
+                  :class="selections[p.id].teeId === tee.id
+                    ? 'border-[color:var(--color-accent)] bg-[color:var(--color-accent)] text-[color:var(--color-bg)]'
+                    : 'border-[color:var(--color-line)] bg-[color:var(--color-surface-alt)] text-[color:var(--color-ink)]'"
+                  @click.stop="selections[p.id].teeId = tee.id"
+                >
+                  <span class="h-1.5 w-1.5 rounded-full" :class="teeDotClass(tee.color)" />
+                  {{ tee.name }}
+                </button>
+              </div>
+              <span
+                v-if="isTeamCompetition"
+                data-mono
+                class="ml-auto text-[10px] text-[color:var(--color-ink-muted)]"
+              >
+                {{ selections[p.id].sideId.replace('-', ' ').toUpperCase() }}
+              </span>
             </div>
           </div>
+        </div>
 
-          <div class="rounded-[1.5rem] border border-dashed border-border/80 bg-background/70 p-4 text-sm text-muted-foreground">
-            <p class="flex items-center gap-2 font-medium text-foreground">
-              <CircleHelpIcon class="size-4 text-primary" />
-              {{ validationMessage || 'Everything looks valid. Start the competition when you are ready.' }}
-            </p>
+        <button
+          class="mt-3 flex w-full items-center justify-center gap-1.5 rounded-2xl border border-dashed border-[color:var(--color-line)] py-3 text-sm text-[color:var(--color-ink-soft)]"
+          @click="newPlayerOpen = true"
+        >
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <path d="M7 2v10M2 7h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+          </svg>
+          Add player
+        </button>
+
+        <div v-if="newPlayerOpen" class="mt-3 rounded-2xl border border-[color:var(--color-line)] bg-[color:var(--color-surface)] p-4">
+          <label class="block">
+            <span data-mono class="text-[10px] text-[color:var(--color-ink-muted)]">Name</span>
+            <input
+              v-model="newPlayer.name"
+              class="mt-1.5 w-full rounded-xl border border-[color:var(--color-line)] bg-[color:var(--color-bg)] px-3 py-2.5 text-[15px] outline-none focus:border-[color:var(--color-accent)]"
+            />
+          </label>
+          <label class="mt-3 block">
+            <span data-mono class="text-[10px] text-[color:var(--color-ink-muted)]">Handicap index</span>
+            <input
+              v-model.number="newPlayer.handicapIndex"
+              type="number"
+              step="0.1"
+              class="mt-1.5 w-full rounded-xl border border-[color:var(--color-line)] bg-[color:var(--color-bg)] px-3 py-2.5 text-[15px] outline-none focus:border-[color:var(--color-accent)]"
+            />
+          </label>
+          <div class="mt-3 flex gap-2">
+            <button
+              class="flex-1 rounded-xl border border-[color:var(--color-line)] py-2.5 text-sm"
+              @click="newPlayerOpen = false"
+            >Cancel</button>
+            <button
+              class="flex-1 rounded-xl bg-[color:var(--color-accent)] py-2.5 text-sm font-semibold text-[color:var(--color-bg)]"
+              @click="addInlinePlayer"
+            >Save</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 3: Options -->
+      <div v-if="step === 3" class="mt-6 space-y-4">
+        <div class="rounded-2xl border border-[color:var(--color-line)] bg-[color:var(--color-surface)] p-4">
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <p class="text-[15px] font-semibold text-[color:var(--color-ink)]">Skins side game</p>
+              <p class="mt-0.5 text-xs text-[color:var(--color-ink-soft)]">
+                Only available on stroke-based formats.
+              </p>
+            </div>
+            <button
+              class="relative h-7 w-12 rounded-full transition"
+              :class="form.skinsEnabled
+                ? 'bg-[color:var(--color-accent)]'
+                : 'bg-[color:var(--color-line)]'"
+              :disabled="!supportsSkins(form.format)"
+              :style="!supportsSkins(form.format) ? { opacity: 0.4 } : undefined"
+              @click="form.skinsEnabled = !form.skinsEnabled"
+            >
+              <span
+                class="absolute top-0.5 h-6 w-6 rounded-full bg-white transition"
+                :style="form.skinsEnabled ? { left: '22px' } : { left: '2px' }"
+              />
+            </button>
           </div>
 
-          <Button class="h-12 w-full rounded-full text-base" @click="createCompetition">
-            Start Competition
-          </Button>
-        </CardContent>
-      </Card>
+          <div v-if="form.skinsEnabled" class="mt-4 flex gap-2">
+            <button
+              v-for="m in ['gross', 'net'] as const"
+              :key="m"
+              class="flex-1 rounded-full border py-2 text-sm font-medium transition"
+              :class="form.skinsMode === m
+                ? 'border-[color:var(--color-accent)] bg-[color:var(--color-accent)] text-[color:var(--color-bg)]'
+                : 'border-[color:var(--color-line)] bg-[color:var(--color-surface-alt)] text-[color:var(--color-ink)]'"
+              @click="form.skinsMode = m"
+            >
+              {{ m === 'gross' ? 'Gross' : 'Net' }}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 4: Start -->
+      <div v-if="step === 4" class="mt-6 space-y-3">
+        <div class="rounded-2xl border border-[color:var(--color-line)] bg-[color:var(--color-surface)] p-4">
+          <p data-mono class="text-[10px] text-[color:var(--color-ink-muted)]">Round</p>
+          <p data-num class="mt-1 text-2xl font-medium tracking-tight">{{ form.name }}</p>
+          <p class="mt-1 text-sm text-[color:var(--color-ink-soft)]">
+            {{ selectedCourse?.clubName }} · {{ getFormatLabel(form.format) }} · {{ form.holes }} holes
+          </p>
+        </div>
+
+        <div class="rounded-2xl border border-[color:var(--color-line)] bg-[color:var(--color-surface)] p-4">
+          <p data-mono class="text-[10px] text-[color:var(--color-ink-muted)]">Players</p>
+          <ul class="mt-2 space-y-2">
+            <li
+              v-for="p in selectedPlayers"
+              :key="p.id"
+              class="flex items-center gap-2 text-[13px]"
+            >
+              <span
+                class="h-2 w-2 rounded-full"
+                :class="teeDotClass(selectedCourse?.tees.find((t) => t.id === selections[p.id].teeId)?.color ?? 'green')"
+              />
+              <span class="flex-1">{{ p.name }}</span>
+              <span data-mono class="text-[10px] text-[color:var(--color-ink-muted)]">
+                HI {{ p.handicapIndex.toFixed(1) }}
+              </span>
+            </li>
+          </ul>
+        </div>
+
+        <div v-if="form.skinsEnabled" class="rounded-2xl border border-[color:var(--color-line)] bg-[color:var(--color-surface)] p-4">
+          <p data-mono class="text-[10px] text-[color:var(--color-ink-muted)]">Side game</p>
+          <p class="mt-1 text-sm">Skins · {{ form.skinsMode }}</p>
+        </div>
+
+        <p v-if="issue" class="text-sm text-[color:var(--color-clay)]">{{ issue }}</p>
+      </div>
+    </div>
+
+    <div class="flex gap-2 border-t border-[color:var(--color-line)] bg-[color:var(--color-surface-alt)] px-4 py-3 pb-[calc(1.75rem+var(--safe-bottom))]">
+      <button
+        class="rounded-2xl border border-[color:var(--color-line)] px-5 py-3 text-[15px] font-medium"
+        :disabled="step === 0"
+        :style="step === 0 ? { opacity: 0.4 } : undefined"
+        @click="step = Math.max(0, step - 1)"
+      >
+        Back
+      </button>
+      <button
+        data-testid="advance"
+        class="flex-1 rounded-2xl bg-[color:var(--color-accent)] px-5 py-3 text-[15px] font-semibold text-[color:var(--color-bg)] disabled:opacity-50"
+        :disabled="!canAdvance"
+        @click="advance"
+      >
+        {{ step === STEPS.length - 1 ? 'Start round' : 'Continue' }}
+      </button>
     </div>
   </div>
 </template>

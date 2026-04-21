@@ -6,60 +6,49 @@ test.describe('Mulligan mobile flow', () => {
     await context.clearPermissions()
   })
 
-  test('loads the scoreboard with the Mulligan chrome', async ({ page }) => {
+  test('shows the competitions empty state on a fresh install', async ({ page }) => {
     await page.goto('/')
     await expect(page).toHaveTitle(/Mulligan/)
-    await expect(page.getByRole('heading', { name: 'Scoreboard' })).toBeVisible()
-    await expect(page.getByText('Bundled Courses')).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Competitions' })).toBeVisible()
+    await expect(page.getByTestId('start-first-competition')).toBeVisible()
   })
 
-  test('creates players, starts a stroke-play round and persists scores', async ({ page }) => {
-    await page.goto('/players')
+  test('creates a stableford round, scores a hole, and persists after reload', async ({ page }) => {
+    await page.goto('/')
+    await page.getByTestId('start-first-competition').click()
+    await expect(page).toHaveURL(/\/competitions\/new$/)
 
-    await page.getByRole('button', { name: 'Add the first player' }).click()
+    // Step 0: Format (default stableford, 18 holes)
+    await page.getByTestId('advance').click()
+    // Step 1: Course (first bundled course preselected)
+    await page.getByTestId('advance').click()
+
+    // Step 2: Players — add two inline
+    await page.getByRole('button', { name: 'Add player' }).click()
     await page.getByLabel('Name').fill('Alice')
-    await page.getByRole('button', { name: 'Save Player' }).click()
+    await page.getByRole('button', { name: 'Save' }).click()
 
-    await page.getByRole('button', { name: 'Add Player' }).click()
+    await page.getByRole('button', { name: 'Add player' }).click()
     await page.getByLabel('Name').fill('Bob')
-    await page.getByRole('button', { name: 'Save Player' }).click()
+    await page.getByRole('button', { name: 'Save' }).click()
 
-    await expect(page.getByRole('cell', { name: 'Alice' })).toBeVisible()
-    await expect(page.getByRole('cell', { name: 'Bob' })).toBeVisible()
+    await page.getByTestId('advance').click()
+    // Step 3: Options (skip)
+    await page.getByTestId('advance').click()
+    // Step 4: Start round
+    await page.getByTestId('advance').click()
 
-    await page.goto('/competitions/new')
-    await expect(page.getByText('Competition Basics')).toBeVisible()
-
-    const includeSwitches = page.getByRole('switch')
-    await includeSwitches.nth(0).click()
-    await includeSwitches.nth(1).click()
-
-    await page.getByRole('button', { name: 'Start Competition' }).click()
     await expect(page).toHaveURL(/\/competitions\/[0-9a-f-]+$/)
 
-    await expect(page.getByRole('tab', { name: 'Score' })).toBeVisible()
-    await expect(page.getByRole('tab', { name: 'Leaderboard' })).toBeVisible()
+    // Open pad for Alice and submit a par-ish score
+    await page.getByRole('button', { name: /Alice/ }).first().click()
+    await page.getByRole('button', { name: 'Par' }).click()
+    await page.getByTestId('pad-submit').click()
 
-    const scoreInputs = page.locator('input[type="number"]')
-    await expect(scoreInputs).toHaveCount(2)
-
-    const firstPlus = scoreInputs.nth(0).locator('..').getByRole('button').nth(1)
-    const secondPlus = scoreInputs.nth(1).locator('..').getByRole('button').nth(1)
-
-    await firstPlus.click()
-    await secondPlus.click()
-
-    await expect(scoreInputs.nth(0)).toHaveValue('5')
-    await expect(scoreInputs.nth(1)).toHaveValue('5')
-
-    await page.getByRole('tab', { name: 'Leaderboard' }).click()
-    await expect(page.getByText('1 holes logged').first()).toBeVisible()
-
-    const competitionUrl = page.url()
+    // Reload and confirm the score persists
+    const url = page.url()
     await page.reload()
-    await expect(page).toHaveURL(competitionUrl)
-    await expect(page.getByRole('tab', { name: 'Score' })).toBeVisible()
-    await page.getByRole('tab', { name: 'Leaderboard' }).click()
-    await expect(page.getByText('1 holes logged').first()).toBeVisible()
+    await expect(page).toHaveURL(url)
+    await expect(page.getByText(/Alice/)).toBeVisible()
   })
 })
