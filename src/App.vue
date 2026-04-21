@@ -1,11 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
 import { RouterView } from 'vue-router'
-import AppHeader from '@/components/app/AppHeader.vue'
-import AppSidebar from '@/components/app/AppSidebar.vue'
-import { Skeleton } from '@/components/ui/skeleton'
 import { Toaster } from '@/components/ui/sonner'
-import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 import { useCompetitionsStore } from '@/stores/competitions'
 import { usePlayersStore } from '@/stores/players'
 
@@ -23,23 +19,16 @@ onMounted(async () => {
 </script>
 
 <template>
-  <SidebarProvider>
-    <AppSidebar />
+  <div class="mx-auto flex min-h-[100svh] w-full max-w-[430px] flex-col bg-[color:var(--color-bg)] shadow-[0_0_0_1px_rgba(23,51,42,0.06)]">
+    <RouterView v-if="ready" />
 
-    <SidebarInset class="bg-[radial-gradient(circle_at_top,_rgba(31,122,88,0.08),_transparent_32%),linear-gradient(180deg,_rgba(246,240,223,0.96),_rgba(255,255,255,0.98))]">
-      <AppHeader />
+    <div v-else class="flex flex-1 items-center justify-center px-6">
+      <div class="text-center">
+        <p data-mono class="text-[10px] text-[color:var(--color-ink-muted)]">Mulligan</p>
+        <p data-num class="mt-2 text-3xl font-medium tracking-tight">Loading…</p>
+      </div>
+    </div>
 
-      <main class="min-h-[calc(100svh-5rem)] px-4 py-6 md:px-6 md:py-8">
-        <div v-if="!ready" class="grid gap-4 md:grid-cols-3">
-          <Skeleton class="h-44 rounded-3xl" />
-          <Skeleton class="h-44 rounded-3xl" />
-          <Skeleton class="h-44 rounded-3xl" />
-        </div>
-
-        <RouterView v-else />
-      </main>
-    </SidebarInset>
-
-    <Toaster rich-colors position="top-right" />
-  </SidebarProvider>
+    <Toaster position="top-center" />
+  </div>
 </template>

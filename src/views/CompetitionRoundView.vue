@@ -1,39 +1,18 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
 import {
-  ArrowLeftIcon,
-  ArrowRightIcon,
-  CheckCheckIcon,
-  FlagIcon,
-  TrophyIcon,
-} from 'lucide-vue-next'
-import LeaderboardTable from '@/components/competition/LeaderboardTable.vue'
-import ScoreControl from '@/components/competition/ScoreControl.vue'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
-import {
-  Empty,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyTitle,
-} from '@/components/ui/empty'
-import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import {
   buildCompetitionSummary,
   buildHoleDetails,
+  getCompetitionPlayerAdjustments,
   getFormatLabel,
+  getNetScore,
+  getStablefordPoints,
   isTeamFormat,
   type Competition,
+  type CompetitionPlayer,
+  type LeaderboardEntry,
 } from '@/lib/golf'
 import { useCompetitionsStore } from '@/stores/competitions'
 
@@ -41,320 +20,623 @@ const route = useRoute()
 const router = useRouter()
 const competitionsStore = useCompetitionsStore()
 
-const competition = computed(() =>
-  competitionsStore.findCompetition(String(route.params.competitionId)),
+const competitionId = computed(() => String(route.params.competitionId))
+const competition = computed<Competition | undefined>(() =>
+  competitionsStore.findCompetition(competitionId.value),
 )
 
-const summary = computed(() =>
-  competition.value ? buildCompetitionSummary(competition.value) : null,
-)
+const currentHole = ref(1)
+const padTarget = ref<string | null>(null) // playerId or sideId
+const padValue = ref('')
 
-const holeDetails = computed(() =>
-  competition.value ? buildHoleDetails(competition.value.players[0]?.teeSnapshot ?? competition.value.courseSnapshot.tees[0]) : [],
-)
-
-const currentHoleIndex = computed(() =>
-  Math.max(0, (competition.value?.currentHole ?? 1) - 1),
-)
-
-const currentHole = computed(() => holeDetails.value[currentHoleIndex.value])
-
-const scoreEntities = computed(() => {
-  const current = competition.value
-
-  if (!current) {
-    return []
+onMounted(() => {
+  const c = competition.value
+  if (!c) {
+    router.replace('/')
+    return
   }
-
-  if (current.format === 'scramble-2') {
-    return current.sides.map((side) => ({
-      id: side.id,
-      label: side.name,
-      subtitle: current.players
-        .filter((player) => player.sideId === side.id)
-        .map((player) => player.displayName)
-        .join(' / '),
-      badge: `PH ${side.playingHandicap ?? 0}`,
-      value: current.scores.sideScores[side.id]?.[currentHoleIndex.value] ?? null,
-      par: current.players[0]?.teeSnapshot.holePars[currentHoleIndex.value] ?? 4,
-      update: (value: number | null) => updateSideScore(side.id, value),
-    }))
+  currentHole.value = Math.max(1, Math.min(c.holes, c.currentHole))
+  if (c.status === 'completed') {
+    router.replace(`/competitions/${c.id}/review`)
   }
-
-  return current.players.map((player) => ({
-    id: player.id,
-    label: player.displayName,
-    subtitle: `${player.teeSnapshot.name} tee${player.sideId ? ` · ${player.sideId.replace('-', ' ')}` : ''}`,
-    badge: `PH ${player.playingHandicap}`,
-    value: current.scores.playerScores[player.id]?.[currentHoleIndex.value] ?? null,
-    par: player.teeSnapshot.holePars[currentHoleIndex.value] ?? 4,
-    update: (value: number | null) => updatePlayerScore(player.id, value),
-  }))
 })
 
-async function mutateCompetition(mutator: (draft: Competition) => void) {
-  if (!competition.value) {
+watch(competition, (c) => {
+  if (c?.status === 'completed') {
+    router.replace(`/competitions/${c.id}/review`)
+  }
+})
+
+const holeCount = computed(() => competition.value?.holes ?? 18)
+const holeDetails = computed(() => {
+  const c = competition.value
+  if (!c) return []
+  return buildHoleDetails(c.players[0]?.teeSnapshot ?? c.courseSnapshot.tees[0])
+})
+
+const hole = computed(() => holeDetails.value[currentHole.value - 1])
+
+const summary = computed(() => (competition.value ? buildCompetitionSummary(competition.value) : null))
+const leaderboard = computed<LeaderboardEntry[]>(() => summary.value?.leaderboard ?? [])
+const isStableford = computed(() =>
+  competition.value?.format === 'stableford' || competition.value?.format === 'fourball-stableford',
+)
+const isScramble = computed(() => competition.value?.format === 'scramble-2')
+const isMatchPlay = computed(() => competition.value?.format === 'match-play')
+const isTeam = computed(() => competition.value ? isTeamFormat(competition.value.format) : false)
+
+const visibleHoles = computed(() => {
+  const total = holeCount.value
+  const maxVisible = Math.min(9, total)
+  const start = Math.max(1, Math.min(total - maxVisible + 1, currentHole.value - Math.floor(maxVisible / 2)))
+  return Array.from({ length: maxVisible }, (_, i) => start + i).filter((n) => n <= total)
+})
+
+const skinsGame = computed(() => competition.value?.sideGames.find((g) => g.type === 'skins' && g.enabled))
+
+function allPlayed(holeNumber: number) {
+  const c = competition.value
+  if (!c) return false
+  if (isScramble.value) {
+    return c.sides.every((s) => c.scores.sideScores[s.id]?.[holeNumber - 1] != null)
+  }
+  return c.players.every((p) => c.scores.playerScores[p.id]?.[holeNumber - 1] != null)
+}
+
+function adjustmentsFor(player: CompetitionPlayer) {
+  if (!competition.value) return []
+  return getCompetitionPlayerAdjustments(competition.value, player)
+}
+
+function strokesForHole(player: CompetitionPlayer, holeIndex: number) {
+  return adjustmentsFor(player)[holeIndex] ?? 0
+}
+
+function getScore(playerId: string, holeIndex: number) {
+  return competition.value?.scores.playerScores[playerId]?.[holeIndex] ?? null
+}
+
+function getSideScore(sideId: string, holeIndex: number) {
+  return competition.value?.scores.sideScores[sideId]?.[holeIndex] ?? null
+}
+
+function cumulativePoints(player: CompetitionPlayer) {
+  const c = competition.value
+  if (!c) return 0
+  const scores = c.scores.playerScores[player.id] ?? []
+  const adjustments = adjustmentsFor(player)
+  let total = 0
+  scores.forEach((gross, i) => {
+    if (gross == null) return
+    total += getStablefordPoints(player.teeSnapshot.holePars[i], getNetScore(gross, adjustments[i] ?? 0))
+  })
+  return total
+}
+
+function cumulativeNet(player: CompetitionPlayer) {
+  const c = competition.value
+  if (!c) return 0
+  const scores = c.scores.playerScores[player.id] ?? []
+  const adjustments = adjustmentsFor(player)
+  return scores.reduce((acc, gross, i) => {
+    if (gross == null) return acc
+    return acc + (getNetScore(gross, adjustments[i] ?? 0) ?? 0)
+  }, 0)
+}
+
+function scoreLabel(gross: number, par: number) {
+  const d = gross - par
+  if (d <= -3) return 'Albatross'
+  if (d === -2) return 'Eagle'
+  if (d === -1) return 'Birdie'
+  if (d === 0) return 'Par'
+  if (d === 1) return 'Bogey'
+  if (d === 2) return 'Double'
+  return `+${d}`
+}
+
+function teeDotClass(color: string) {
+  switch (color) {
+    case 'red': return 'bg-[color:var(--color-tee-red)]'
+    case 'yellow': return 'bg-[color:var(--color-tee-yellow)]'
+    case 'blue': return 'bg-[color:var(--color-tee-blue)]'
+    case 'black': return 'bg-[color:var(--color-ink)]'
+    case 'white': return 'bg-[color:var(--color-tee-white)] border border-[color:var(--color-line)]'
+    default: return 'bg-[color:var(--color-tee-green)]'
+  }
+}
+
+function openPad(id: string) {
+  padTarget.value = id
+  const holeIndex = currentHole.value - 1
+  const existing = isScramble.value ? getSideScore(id, holeIndex) : getScore(id, holeIndex)
+  padValue.value = existing != null ? String(existing) : ''
+}
+
+function closePad() {
+  padTarget.value = null
+  padValue.value = ''
+}
+
+async function setScore(id: string, gross: number | null) {
+  const c = competition.value
+  if (!c) return
+  const next: Competition = structuredClone(c)
+  const holeIndex = currentHole.value - 1
+  if (isScramble.value) {
+    const arr = next.scores.sideScores[id] ?? []
+    arr[holeIndex] = gross
+    next.scores.sideScores[id] = arr
+  } else {
+    const arr = next.scores.playerScores[id] ?? []
+    arr[holeIndex] = gross
+    next.scores.playerScores[id] = arr
+  }
+  next.currentHole = currentHole.value
+  await competitionsStore.saveCompetition(next)
+}
+
+async function submitPad() {
+  if (!padTarget.value) return
+  const n = parseInt(padValue.value, 10)
+  if (!Number.isFinite(n) || n <= 0) {
+    toast.error('Enter a positive score.')
     return
   }
-
-  const draft = JSON.parse(JSON.stringify(competition.value)) as Competition
-  mutator(draft)
-  await competitionsStore.saveCompetition(draft)
+  await setScore(padTarget.value, n)
+  closePad()
 }
 
-async function updatePlayerScore(playerId: string, value: number | null) {
-  await mutateCompetition((draft) => {
-    draft.scores.playerScores[playerId][currentHoleIndex.value] = value
-  })
+async function clearPadScore() {
+  if (!padTarget.value) return
+  await setScore(padTarget.value, null)
+  closePad()
 }
 
-async function updateSideScore(sideId: string, value: number | null) {
-  await mutateCompetition((draft) => {
-    draft.scores.sideScores[sideId][currentHoleIndex.value] = value
-  })
-}
-
-async function setCurrentHole(holeNumber: number) {
-  await mutateCompetition((draft) => {
-    draft.currentHole = holeNumber
-  })
-}
-
-async function stepHole(delta: number) {
-  if (!competition.value) {
-    return
+function padKey(k: string) {
+  if (k === 'del') {
+    padValue.value = padValue.value.slice(0, -1)
+  } else if (padValue.value.length < 2) {
+    padValue.value += k
   }
-
-  const nextHole = Math.min(competition.value.holes, Math.max(1, competition.value.currentHole + delta))
-  await setCurrentHole(nextHole)
 }
 
-async function toggleCompletion() {
-  if (!competition.value) {
-    return
+function setPadFromPar(n: number) {
+  padValue.value = String(n)
+}
+
+async function finishRound() {
+  const c = competition.value
+  if (!c) return
+  if (summary.value && summary.value.completeHoles < c.holes) {
+    const ok = confirm('Not all holes scored. Finish anyway?')
+    if (!ok) return
   }
+  const next = structuredClone(c)
+  next.status = 'completed'
+  await competitionsStore.saveCompetition(next)
+  router.replace(`/competitions/${c.id}/review`)
+}
 
-  await mutateCompetition((draft) => {
-    draft.status = draft.status === 'completed' ? 'in_progress' : 'completed'
-  })
+const padPar = computed(() => hole.value?.par ?? 4)
+const padQuick = computed(() => {
+  const par = padPar.value
+  return [
+    { label: 'Eagle', n: par - 2 },
+    { label: 'Birdie', n: par - 1 },
+    { label: 'Par', n: par },
+    { label: 'Bogey', n: par + 1 },
+    { label: 'Double', n: par + 2 },
+  ].filter((q) => q.n > 0)
+})
 
-  toast.success(competition.value.status === 'completed' ? 'Competition reopened.' : 'Competition marked complete.')
+const padPreviewLabel = computed(() => {
+  const n = parseInt(padValue.value, 10)
+  if (!Number.isFinite(n)) return 'strokes'
+  return scoreLabel(n, padPar.value)
+})
+
+const padPreviewPoints = computed(() => {
+  if (!competition.value || !padTarget.value || !hole.value) return null
+  const n = parseInt(padValue.value, 10)
+  if (!Number.isFinite(n)) return null
+  if (isScramble.value) {
+    const side = competition.value.sides.find((s) => s.id === padTarget.value)
+    if (!side) return null
+    const player = competition.value.players.find((p) => p.sideId === side.id)
+    if (!player) return null
+    return getStablefordPoints(
+      player.teeSnapshot.holePars[currentHole.value - 1],
+      getNetScore(n, 0),
+    )
+  }
+  const player = competition.value.players.find((p) => p.id === padTarget.value)
+  if (!player) return null
+  const adj = strokesForHole(player, currentHole.value - 1)
+  return getStablefordPoints(
+    player.teeSnapshot.holePars[currentHole.value - 1],
+    getNetScore(n, adj),
+  )
+})
+
+function padTargetLabel() {
+  if (!padTarget.value || !competition.value) return ''
+  if (isScramble.value) {
+    const side = competition.value.sides.find((s) => s.id === padTarget.value)
+    if (!side) return ''
+    const players = competition.value.players.filter((p) => p.sideId === side.id)
+    return players.map((p) => p.displayName.split(' ')[0]).join(' / ') || side.name
+  }
+  return competition.value.players.find((p) => p.id === padTarget.value)?.displayName ?? ''
 }
 </script>
 
 <template>
-  <div v-if="!competition" class="space-y-6">
-    <Empty class="min-h-[55svh] rounded-[2rem] border-border/80 bg-card/70 backdrop-blur">
-      <EmptyHeader>
-        <EmptyTitle>Competition not found</EmptyTitle>
-        <EmptyDescription>
-          The requested local round could not be loaded from IndexedDB.
-        </EmptyDescription>
-      </EmptyHeader>
-      <Button variant="outline" class="rounded-full" @click="router.push('/')">
-        Back to scoreboard
-      </Button>
-    </Empty>
-  </div>
+  <div v-if="competition" class="relative flex min-h-[100svh] flex-col bg-[color:var(--color-bg)]">
+    <header class="flex items-center justify-between border-b border-[color:var(--color-line-soft)] px-4 pt-[calc(3.5rem+var(--safe-top))] pb-2.5">
+      <div class="flex min-w-0 items-center gap-2.5">
+        <button
+          aria-label="Back"
+          class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg"
+          @click="router.push('/')"
+        >
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M10 3L5 8l5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+        </button>
+        <div class="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-[color:var(--color-accent)]">
+          <svg width="12" height="12" viewBox="0 0 12 12" class="text-[color:var(--color-bg)]">
+            <path d="M2 1v10M2 2h7l-1 2 1 2H2" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+        </div>
+        <div class="min-w-0">
+          <p class="truncate text-[15px] font-semibold tracking-tight text-[color:var(--color-ink)]">
+            {{ competition.name }}
+          </p>
+          <p data-mono class="mt-0.5 text-[10px] text-[color:var(--color-ink-muted)]">
+            {{ competition.courseSnapshot.clubName }} · {{ getFormatLabel(competition.format) }}
+          </p>
+        </div>
+      </div>
+      <button
+        class="rounded-full border border-[color:var(--color-line)] bg-[color:var(--color-surface)] px-3 py-1.5 text-[11px] font-medium text-[color:var(--color-ink)]"
+        @click="finishRound"
+      >
+        Finish
+      </button>
+    </header>
 
-  <div v-else class="space-y-6">
-    <Card class="rounded-[1.75rem] border-border/80 bg-card/70 backdrop-blur">
-      <CardHeader class="gap-5">
-        <div class="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-          <div class="space-y-3">
-            <div class="flex flex-wrap items-center gap-2">
-              <Badge variant="secondary" class="rounded-full">
-                {{ competition.status === 'completed' ? 'Completed' : 'Live round' }}
-              </Badge>
-              <Badge variant="outline" class="rounded-full">
-                {{ getFormatLabel(competition.format) }}
-              </Badge>
-              <Badge variant="outline" class="rounded-full">
-                {{ competition.courseSnapshot.clubName }}
-              </Badge>
+    <section class="px-4 pt-4 pb-3">
+      <div class="flex justify-center gap-1 overflow-x-auto no-scrollbar">
+        <button
+          v-for="n in visibleHoles"
+          :key="n"
+          class="flex flex-shrink-0 items-center justify-center transition"
+          :class="[
+            n === currentHole
+              ? 'h-11 w-11 rounded-[14px] bg-[color:var(--color-accent)] text-[color:var(--color-bg)]'
+              : allPlayed(n)
+                ? 'h-[30px] w-[30px] rounded-[10px] border border-[color:var(--color-line)] bg-[color:var(--color-surface)] text-[color:var(--color-ink)]'
+                : 'h-[30px] w-[30px] rounded-[10px] text-[color:var(--color-ink-muted)]',
+          ]"
+          @click="currentHole = n"
+        >
+          <span
+            data-num
+            :class="n === currentHole ? 'text-[17px] font-bold' : 'text-[13px] font-medium'"
+          >
+            {{ n }}
+          </span>
+        </button>
+      </div>
+
+      <div v-if="hole" class="mt-4 flex items-baseline justify-between px-2">
+        <div>
+          <p data-mono class="text-[10px] text-[color:var(--color-ink-muted)]">Hole {{ currentHole }}</p>
+          <p data-num class="mt-0.5 text-[42px] font-medium leading-none tracking-[-0.04em] text-[color:var(--color-ink)]">
+            Par {{ hole.par }}
+          </p>
+        </div>
+        <div class="space-y-1 text-right">
+          <div class="flex items-baseline justify-end gap-2.5">
+            <span data-mono class="text-[10px] text-[color:var(--color-ink-muted)]">SI</span>
+            <span data-num class="text-[17px] font-medium">{{ hole.strokeIndex }}</span>
+          </div>
+          <div class="flex items-baseline justify-end gap-2.5">
+            <span data-mono class="text-[10px] text-[color:var(--color-ink-muted)]">Yards</span>
+            <span data-num class="text-[17px] font-medium">{{ hole.yardage }}</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div v-if="skinsGame" class="mx-4 mb-1 flex items-center justify-between rounded-xl border border-[color:var(--color-line)] bg-gradient-to-r from-[color:var(--color-surface)] to-[color:var(--color-surface-alt)] px-3.5 py-2.5">
+      <div class="flex items-center gap-2">
+        <span class="flex h-[18px] w-[18px] items-center justify-center rounded-full bg-[color:var(--color-gold)]/90 text-[10px] font-bold text-[color:var(--color-surface)]" data-num>S</span>
+        <span class="text-xs font-medium text-[color:var(--color-ink)]">Skins · {{ skinsGame.mode }}</span>
+      </div>
+    </div>
+
+    <section class="flex-1 overflow-y-auto px-4 pt-3 pb-[260px]">
+      <template v-if="!isScramble">
+        <button
+          v-for="player in competition.players"
+          :key="player.id"
+          class="mb-2 flex w-full items-center gap-3.5 rounded-[16px] border border-[color:var(--color-line)] bg-[color:var(--color-surface)] px-4 py-3.5 text-left"
+          @click="openPad(player.id)"
+        >
+          <div class="min-w-0 flex-1">
+            <div class="flex items-center gap-2">
+              <span
+                class="h-2 w-2 flex-shrink-0 rounded-full"
+                :class="teeDotClass(player.teeSnapshot.color)"
+              />
+              <span class="truncate text-[15px] font-semibold tracking-tight text-[color:var(--color-ink)]">
+                {{ player.displayName }}
+              </span>
             </div>
-
-            <div>
-              <CardTitle class="text-3xl">
-                {{ competition.name }}
-              </CardTitle>
-              <CardDescription class="mt-2 text-base">
-                {{ new Date(competition.date).toLocaleDateString() }} · {{ competition.holes }} holes · {{ competition.players.length }} players
-              </CardDescription>
-            </div>
-          </div>
-
-          <div class="flex flex-wrap gap-2">
-            <Button variant="outline" class="rounded-full" @click="toggleCompletion">
-              <CheckCheckIcon data-icon="inline-start" />
-              {{ competition.status === 'completed' ? 'Reopen round' : 'Mark complete' }}
-            </Button>
-          </div>
-        </div>
-
-        <div class="grid gap-4 md:grid-cols-3">
-          <div class="rounded-[1.5rem] border border-border/80 bg-background/70 p-4">
-            <p class="text-xs font-semibold uppercase tracking-[0.24em] text-primary/70">
-              Current hole
-            </p>
-            <p class="mt-2 text-3xl font-semibold">
-              {{ competition.currentHole }}
-            </p>
-            <p class="text-sm text-muted-foreground">
-              {{ currentHole ? `Par ${currentHole.par} · SI ${currentHole.strokeIndex}` : 'Select a hole to score.' }}
-            </p>
-          </div>
-          <div class="rounded-[1.5rem] border border-border/80 bg-background/70 p-4">
-            <p class="text-xs font-semibold uppercase tracking-[0.24em] text-primary/70">
-              Completed holes
-            </p>
-            <p class="mt-2 text-3xl font-semibold">
-              {{ summary?.completeHoles ?? 0 }}
-            </p>
-            <p class="text-sm text-muted-foreground">
-              All selected scorecards entered through this point.
-            </p>
-          </div>
-          <div class="rounded-[1.5rem] border border-border/80 bg-background/70 p-4">
-            <p class="text-xs font-semibold uppercase tracking-[0.24em] text-primary/70">
-              Side games
-            </p>
-            <p class="mt-2 text-3xl font-semibold">
-              {{ competition.sideGames.length }}
-            </p>
-            <p class="text-sm text-muted-foreground">
-              {{ competition.sideGames.length > 0 ? 'Skins results update live as you score.' : 'No side game attached to this round.' }}
-            </p>
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent class="space-y-4">
-        <ScrollArea class="w-full">
-          <div class="flex gap-2 pb-3">
-            <Button
-              v-for="hole in holeDetails"
-              :key="hole.number"
-              :variant="competition.currentHole === hole.number ? 'default' : 'outline'"
-              class="min-w-14 rounded-full"
-              @click="setCurrentHole(hole.number)"
-            >
-              {{ hole.number }}
-            </Button>
-          </div>
-          <ScrollBar orientation="horizontal" />
-        </ScrollArea>
-
-        <div class="flex justify-between gap-3">
-          <Button variant="outline" class="rounded-full" :disabled="competition.currentHole === 1" @click="stepHole(-1)">
-            <ArrowLeftIcon data-icon="inline-start" />
-            Previous Hole
-          </Button>
-          <Button variant="outline" class="rounded-full" :disabled="competition.currentHole === competition.holes" @click="stepHole(1)">
-            Next Hole
-            <ArrowRightIcon data-icon="inline-end" />
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
-
-    <Tabs default-value="score" class="space-y-4">
-      <TabsList class="w-full justify-start rounded-full bg-card/80 p-1">
-        <TabsTrigger value="score" class="rounded-full px-5">
-          Score
-        </TabsTrigger>
-        <TabsTrigger value="leaderboard" class="rounded-full px-5">
-          Leaderboard
-        </TabsTrigger>
-        <TabsTrigger value="side-games" class="rounded-full px-5">
-          Side Games
-        </TabsTrigger>
-      </TabsList>
-
-      <TabsContent value="score" class="space-y-4">
-        <div class="grid gap-4 lg:grid-cols-2">
-          <ScoreControl
-            v-for="entity in scoreEntities"
-            :key="entity.id"
-            :label="entity.label"
-            :subtitle="entity.subtitle"
-            :badge="entity.badge"
-            :value="entity.value"
-            :par="entity.par"
-            @update="entity.update"
-          />
-        </div>
-      </TabsContent>
-
-      <TabsContent value="leaderboard" class="space-y-4">
-        <Card class="rounded-[1.75rem] border-border/80 bg-card/70 backdrop-blur">
-          <CardHeader>
-            <CardTitle class="flex items-center gap-2">
-              <TrophyIcon class="size-5 text-primary" />
-              Live Leaderboard
-            </CardTitle>
-            <CardDescription>
-              Gross totals, net results, stableford points, and skins all update from the current hole scores.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <LeaderboardTable :entries="summary?.leaderboard ?? []" :format="competition.format" />
-          </CardContent>
-        </Card>
-      </TabsContent>
-
-      <TabsContent value="side-games" class="space-y-4">
-        <Card class="rounded-[1.75rem] border-border/80 bg-card/70 backdrop-blur">
-          <CardHeader>
-            <CardTitle class="flex items-center gap-2">
-              <FlagIcon class="size-5 text-primary" />
-              Side Games
-            </CardTitle>
-            <CardDescription>
-              Score-derived side game summaries live next to the round without any extra event tracking.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Empty v-if="!summary?.skins" class="rounded-[1.5rem] border-border/80 bg-background/70">
-              <EmptyHeader>
-                <EmptyTitle>No side game attached</EmptyTitle>
-                <EmptyDescription>
-                  Turn on skins during setup if you want gross or net hole winners to carry alongside the main leaderboard.
-                </EmptyDescription>
-              </EmptyHeader>
-            </Empty>
-
-            <div v-else class="space-y-4">
-              <div class="rounded-[1.5rem] border border-border/80 bg-background/70 p-4">
-                <p class="text-sm text-muted-foreground">
-                  Skins mode: <span class="font-medium text-foreground">{{ summary.skins.mode }}</span>
-                </p>
-              </div>
-
-              <div class="rounded-3xl border border-border/80 bg-background/65 p-2">
-                <LeaderboardTable :entries="summary.leaderboard.filter((entry) => (entry.skinsWon ?? 0) > -1)" :format="competition.format" />
-              </div>
-
-              <div class="grid gap-3 md:grid-cols-2">
-                <div
-                  v-for="hole in summary.skins.holes"
-                  :key="hole.hole"
-                  class="rounded-[1.5rem] border border-border/80 bg-background/70 p-4"
-                >
-                  <p class="text-xs font-semibold uppercase tracking-[0.24em] text-primary/70">
-                    Hole {{ hole.hole }}
-                  </p>
-                  <p class="mt-2 text-base font-medium">
-                    {{ hole.winnerLabel ?? 'Carryover' }}
-                  </p>
-                  <p class="text-sm text-muted-foreground">
-                    {{ hole.winnerLabel ? `${hole.carryValue} skin(s) won with ${hole.winningScore}` : `${hole.carryValue} skin(s) roll to the next hole` }}
-                  </p>
+            <div class="mt-1 flex items-center gap-2 pl-4">
+              <span data-mono class="text-[10px] text-[color:var(--color-ink-muted)]">
+                HCP {{ player.playingHandicap }}
+              </span>
+              <template v-if="strokesForHole(player, currentHole - 1) > 0">
+                <div class="flex items-center gap-0.5">
+                  <span
+                    v-for="i in strokesForHole(player, currentHole - 1)"
+                    :key="i"
+                    class="h-1 w-1 rounded-full bg-[color:var(--color-accent)]"
+                  />
                 </div>
-              </div>
+              </template>
             </div>
-          </CardContent>
-        </Card>
-      </TabsContent>
-    </Tabs>
+          </div>
+
+          <div
+            class="flex h-16 w-16 flex-shrink-0 flex-col items-center justify-center rounded-[16px]"
+            :class="getScore(player.id, currentHole - 1) != null
+              ? 'border-[1.5px] border-[color:var(--color-line)]'
+              : 'border border-dashed border-[color:var(--color-ink-dim)] bg-[color:var(--color-bg)]'"
+          >
+            <template v-if="getScore(player.id, currentHole - 1) != null">
+              <span
+                data-num
+                class="text-[34px] leading-none font-semibold tracking-[-0.02em]"
+                :class="(() => {
+                  const g = getScore(player.id, currentHole - 1)!
+                  const d = g - hole!.par
+                  if (d <= -1) return 'text-[color:var(--color-emerald)]'
+                  if (d >= 2) return 'text-[color:var(--color-clay)]'
+                  return 'text-[color:var(--color-ink)]'
+                })()"
+              >
+                {{ getScore(player.id, currentHole - 1) }}
+              </span>
+              <span data-mono class="mt-1 text-[9px] text-[color:var(--color-ink-muted)]">
+                {{ scoreLabel(getScore(player.id, currentHole - 1)!, hole!.par) }}
+              </span>
+            </template>
+            <template v-else>
+              <svg width="22" height="22" viewBox="0 0 22 22" class="text-[color:var(--color-ink-muted)]">
+                <path d="M11 4v14M4 11h14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+              </svg>
+            </template>
+          </div>
+
+          <div class="flex w-12 flex-col items-end">
+            <span
+              data-num
+              class="text-2xl leading-none font-medium tracking-[-0.02em]"
+              :class="getScore(player.id, currentHole - 1) != null
+                ? 'text-[color:var(--color-ink)]'
+                : 'text-[color:var(--color-ink-dim)]'"
+            >
+              {{ isStableford
+                ? (getScore(player.id, currentHole - 1) != null
+                  ? getStablefordPoints(hole!.par, getNetScore(getScore(player.id, currentHole - 1), strokesForHole(player, currentHole - 1)))
+                  : '–')
+                : (getScore(player.id, currentHole - 1) != null
+                  ? getNetScore(getScore(player.id, currentHole - 1), strokesForHole(player, currentHole - 1))
+                  : '–') }}
+            </span>
+            <span data-mono class="mt-1 text-[9px] text-[color:var(--color-ink-muted)]">
+              {{ isStableford ? 'pts' : 'net' }}
+            </span>
+            <span data-num class="mt-1.5 text-xs text-[color:var(--color-ink-soft)]">
+              <span class="font-semibold text-[color:var(--color-ink)]">
+                {{ isStableford ? cumulativePoints(player) : cumulativeNet(player) }}
+              </span>
+              <span class="text-[10px] text-[color:var(--color-ink-muted)]"> total</span>
+            </span>
+          </div>
+        </button>
+      </template>
+
+      <template v-else>
+        <button
+          v-for="side in competition.sides"
+          :key="side.id"
+          class="mb-2 flex w-full items-center gap-3.5 rounded-[16px] border border-[color:var(--color-line)] bg-[color:var(--color-surface)] px-4 py-3.5 text-left"
+          @click="openPad(side.id)"
+        >
+          <div class="min-w-0 flex-1">
+            <p class="truncate text-[15px] font-semibold tracking-tight">
+              {{ competition.players.filter((p) => p.sideId === side.id).map((p) => p.displayName).join(' / ') || side.name }}
+            </p>
+            <p data-mono class="mt-1 text-[10px] text-[color:var(--color-ink-muted)]">
+              HCP {{ side.playingHandicap ?? 0 }}
+            </p>
+          </div>
+          <div
+            class="flex h-16 w-16 flex-shrink-0 flex-col items-center justify-center rounded-[16px]"
+            :class="getSideScore(side.id, currentHole - 1) != null
+              ? 'border-[1.5px] border-[color:var(--color-line)]'
+              : 'border border-dashed border-[color:var(--color-ink-dim)] bg-[color:var(--color-bg)]'"
+          >
+            <template v-if="getSideScore(side.id, currentHole - 1) != null">
+              <span data-num class="text-[34px] leading-none font-semibold">
+                {{ getSideScore(side.id, currentHole - 1) }}
+              </span>
+            </template>
+            <template v-else>
+              <svg width="22" height="22" viewBox="0 0 22 22" class="text-[color:var(--color-ink-muted)]">
+                <path d="M11 4v14M4 11h14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+              </svg>
+            </template>
+          </div>
+        </button>
+      </template>
+
+      <p data-mono class="mt-3 text-center text-[10px] text-[color:var(--color-ink-muted)]">
+        — tap a score to enter —
+      </p>
+    </section>
+
+    <footer class="absolute bottom-0 left-0 right-0 border-t border-[color:var(--color-line)] bg-[color:var(--color-surface-alt)] px-5 pt-3 pb-[calc(1.25rem+var(--safe-bottom))] shadow-[0_-8px_24px_rgba(0,0,0,0.04)]">
+      <div class="flex items-baseline justify-between">
+        <p data-mono class="text-[10px] text-[color:var(--color-ink-muted)]">
+          Leaderboard · thru {{ Math.max(0, currentHole - 1) }}
+        </p>
+      </div>
+      <ul class="mt-2">
+        <li
+          v-for="(entry, i) in leaderboard"
+          :key="entry.id"
+          class="flex items-center justify-between py-1"
+        >
+          <div class="flex min-w-0 flex-1 items-center gap-2.5">
+            <span data-mono class="w-3.5 text-[11px] text-[color:var(--color-ink-muted)]">{{ i + 1 }}</span>
+            <span class="truncate text-[13px] font-medium tracking-tight" :class="i === 0 ? 'font-semibold' : ''">
+              {{ entry.label }}
+            </span>
+            <span v-if="i > 0" data-mono class="text-[10px] text-[color:var(--color-ink-muted)]">
+              −{{ Math.max(0, (leaderboard[0]?.[isStableford ? 'stablefordPoints' : 'netTotal'] ?? 0) - (entry[isStableford ? 'stablefordPoints' : 'netTotal'] ?? 0)) }}
+            </span>
+          </div>
+          <div data-num class="text-[18px] font-semibold tracking-[-0.02em]">
+            {{ isMatchPlay ? (entry.matchStatus ?? '–') : isStableford ? entry.stablefordPoints : entry.netTotal }}
+            <span data-mono class="ml-0.5 text-[10px] font-normal text-[color:var(--color-ink-muted)]">
+              {{ isMatchPlay ? '' : isStableford ? 'pts' : 'net' }}
+            </span>
+          </div>
+        </li>
+      </ul>
+    </footer>
+
+    <!-- Number pad overlay -->
+    <div
+      v-if="padTarget"
+      class="absolute inset-0 z-40 flex flex-col justify-end bg-black/30"
+      @click="closePad"
+    >
+      <div
+        class="rounded-t-3xl bg-[color:var(--color-bg)] px-4 pt-3 pb-[calc(1.75rem+var(--safe-bottom))] shadow-[0_-20px_60px_rgba(0,0,0,0.25)]"
+        @click.stop
+      >
+        <div class="mx-auto mb-3 h-1 w-9 rounded-sm bg-[color:var(--color-ink-dim)]" />
+
+        <div class="mb-3.5 flex items-start justify-between">
+          <div>
+            <p data-mono class="text-[10px] text-[color:var(--color-ink-muted)]">
+              {{ padTargetLabel() }} · Hole {{ currentHole }}
+            </p>
+            <p data-num class="mt-0.5 text-[22px] font-medium tracking-[-0.02em]">Score</p>
+          </div>
+          <button
+            aria-label="Close"
+            class="flex h-8 w-8 items-center justify-center rounded-full bg-[color:var(--color-surface)]"
+            @click="closePad"
+          >
+            <svg width="12" height="12" viewBox="0 0 12 12" class="text-[color:var(--color-ink-soft)]">
+              <path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+            </svg>
+          </button>
+        </div>
+
+        <div class="mb-3.5 flex items-center justify-between rounded-2xl border border-[color:var(--color-line)] bg-[color:var(--color-surface)] px-4 py-3.5">
+          <div>
+            <p data-num class="text-[46px] leading-none font-medium tracking-[-0.03em]" :class="padValue ? 'text-[color:var(--color-ink)]' : 'text-[color:var(--color-ink-dim)]'">
+              {{ padValue || '–' }}
+            </p>
+            <p data-mono class="mt-1 text-[10px] text-[color:var(--color-ink-muted)]">
+              {{ padPreviewLabel }}
+            </p>
+          </div>
+          <div class="text-right">
+            <p data-num class="text-[34px] leading-none font-medium tracking-[-0.02em]" :class="padPreviewPoints != null ? 'text-[color:var(--color-accent)]' : 'text-[color:var(--color-ink-dim)]'">
+              {{ padPreviewPoints ?? '–' }}
+            </p>
+            <p data-mono class="mt-1 text-[10px] text-[color:var(--color-ink-muted)]">points</p>
+          </div>
+        </div>
+
+        <div class="mb-3.5 flex gap-1.5">
+          <button
+            v-for="q in padQuick"
+            :key="q.label"
+            class="flex-1 rounded-xl border py-2.5 text-center transition"
+            :class="padValue === String(q.n)
+              ? 'border-[color:var(--color-accent)] bg-[color:var(--color-accent)] text-[color:var(--color-bg)]'
+              : 'border-[color:var(--color-line)] bg-[color:var(--color-surface)] text-[color:var(--color-ink)]'"
+            @click="setPadFromPar(q.n)"
+          >
+            <span data-num class="block text-[18px] font-semibold">{{ q.n }}</span>
+            <span data-mono class="block text-[9px] opacity-70">{{ q.label }}</span>
+          </button>
+        </div>
+
+        <div class="grid gap-2">
+          <div class="grid grid-cols-3 gap-2">
+            <button
+              v-for="k in ['1','2','3']"
+              :key="k"
+              class="h-[54px] rounded-2xl border border-[color:var(--color-line)] bg-[color:var(--color-surface)] text-[26px] font-medium"
+              data-num
+              @click="padKey(k)"
+            >{{ k }}</button>
+          </div>
+          <div class="grid grid-cols-3 gap-2">
+            <button
+              v-for="k in ['4','5','6']"
+              :key="k"
+              class="h-[54px] rounded-2xl border border-[color:var(--color-line)] bg-[color:var(--color-surface)] text-[26px] font-medium"
+              data-num
+              @click="padKey(k)"
+            >{{ k }}</button>
+          </div>
+          <div class="grid grid-cols-3 gap-2">
+            <button
+              v-for="k in ['7','8','9']"
+              :key="k"
+              class="h-[54px] rounded-2xl border border-[color:var(--color-line)] bg-[color:var(--color-surface)] text-[26px] font-medium"
+              data-num
+              @click="padKey(k)"
+            >{{ k }}</button>
+          </div>
+          <div class="grid grid-cols-3 gap-2">
+            <button
+              class="h-[54px] rounded-2xl border border-[color:var(--color-line)] bg-[color:var(--color-surface)] text-sm font-medium"
+              @click="clearPadScore"
+            >Clear</button>
+            <button
+              class="h-[54px] rounded-2xl border border-[color:var(--color-line)] bg-[color:var(--color-surface)] text-[26px] font-medium"
+              data-num
+              @click="padKey('0')"
+            >0</button>
+            <button
+              class="h-[54px] rounded-2xl border border-[color:var(--color-line)] bg-[color:var(--color-surface)] text-sm font-medium"
+              @click="padKey('del')"
+            >⌫</button>
+          </div>
+          <button
+            data-testid="pad-submit"
+            class="h-[54px] rounded-2xl bg-[color:var(--color-accent)] text-[15px] font-semibold text-[color:var(--color-bg)] disabled:opacity-50"
+            :disabled="!padValue"
+            @click="submitPad"
+          >
+            Save score
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
