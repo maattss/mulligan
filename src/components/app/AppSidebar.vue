@@ -24,6 +24,7 @@ import {
   SidebarSeparator,
 } from '@/components/ui/sidebar'
 import { getCatalogMetadata } from '@/lib/course-catalog'
+import { formatCatalogEntryCount, formatGeneratedCatalogDate, nb } from '@/locales/nb'
 import { useCompetitionsStore } from '@/stores/competitions'
 import { usePlayersStore } from '@/stores/players'
 
@@ -31,23 +32,24 @@ const route = useRoute()
 const playersStore = usePlayersStore()
 const competitionsStore = useCompetitionsStore()
 const catalogMeta = getCatalogMetadata()
+const copy = nb.sidebar
 
 const navigationItems = computed(() => [
   {
     to: '/',
-    label: 'Scoreboard',
+    label: nb.routes.dashboard.title,
     icon: TrophyIcon,
     badge: competitionsStore.competitions.filter((competition) => competition.status === 'in_progress').length || undefined,
   },
   {
     to: '/players',
-    label: 'Players',
+    label: nb.routes.players.title,
     icon: UsersRoundIcon,
     badge: playersStore.players.length || undefined,
   },
   {
     to: '/competitions/new',
-    label: 'New Competition',
+    label: nb.routes.competitionNew.title,
     icon: FolderPlusIcon,
   },
 ])
@@ -59,25 +61,25 @@ const navigationItems = computed(() => [
       <div class="flex items-center justify-between gap-3">
         <div>
           <p class="text-xs font-semibold uppercase tracking-[0.3em] text-sidebar-foreground/60">
-            Mulligan
+            {{ nb.appName }}
           </p>
           <h2 class="text-lg font-semibold text-sidebar-foreground">
-            Clubhouse
+            {{ copy.title }}
           </h2>
         </div>
         <Badge variant="secondary" class="rounded-full">
-          Offline
+          {{ copy.status }}
         </Badge>
       </div>
 
       <div class="rounded-2xl border border-sidebar-border/80 bg-sidebar-primary/8 p-3 text-sm text-sidebar-foreground/80">
-        One scorer, local rounds, seeded Bergen and Stavanger catalog.
+        {{ copy.intro }}
       </div>
     </SidebarHeader>
 
     <SidebarContent class="px-2 py-4">
       <SidebarGroup>
-        <SidebarGroupLabel>Workspace</SidebarGroupLabel>
+        <SidebarGroupLabel>{{ copy.workspace }}</SidebarGroupLabel>
         <SidebarGroupContent>
           <SidebarMenu>
             <SidebarMenuItem v-for="item in navigationItems" :key="item.to">
@@ -98,17 +100,17 @@ const navigationItems = computed(() => [
       <SidebarSeparator />
 
       <SidebarGroup>
-        <SidebarGroupLabel>Catalog</SidebarGroupLabel>
+        <SidebarGroupLabel>{{ copy.catalog }}</SidebarGroupLabel>
         <SidebarGroupContent>
           <div class="space-y-3 rounded-2xl border border-sidebar-border/80 bg-sidebar-accent/40 p-3 text-sm text-sidebar-foreground/80">
             <div class="flex items-start gap-2">
               <BookOpenTextIcon class="mt-0.5 size-4 shrink-0" />
               <div>
                 <p class="font-medium text-sidebar-foreground">
-                  {{ catalogMeta.totalCourses }} bundled courses
+                  {{ formatCatalogEntryCount(catalogMeta.totalCourses) }}
                 </p>
                 <p class="text-xs text-sidebar-foreground/65">
-                  Built from the local seed and sync pipeline.
+                  {{ copy.builtFromSeed }}
                 </p>
               </div>
             </div>
@@ -117,7 +119,7 @@ const navigationItems = computed(() => [
               <CircleDotDashedIcon class="mt-0.5 size-4 shrink-0" />
               <div>
                 <p class="font-medium text-sidebar-foreground">
-                  Generated {{ new Date(catalogMeta.generatedAt).toLocaleDateString() }}
+                  {{ formatGeneratedCatalogDate(catalogMeta.generatedAt) }}
                 </p>
                 <p class="text-xs text-sidebar-foreground/65">
                   {{ catalogMeta.source }}
@@ -130,7 +132,7 @@ const navigationItems = computed(() => [
     </SidebarContent>
 
     <SidebarFooter class="border-t border-sidebar-border/80 px-4 py-4 text-xs text-sidebar-foreground/65">
-      Handicap-aware scoring and quick competition setup for local buddy games.
+      {{ copy.footer }}
     </SidebarFooter>
   </Sidebar>
 </template>

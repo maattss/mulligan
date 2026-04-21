@@ -2,12 +2,14 @@
 import { computed } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import { CalendarRangeIcon, FolderPlusIcon } from 'lucide-vue-next'
+import { nb } from '@/locales/nb'
 import { Button } from '@/components/ui/button'
 import { SidebarTrigger } from '@/components/ui/sidebar'
 
 const route = useRoute()
+const copy = nb.header
 
-const title = computed(() => typeof route.meta.title === 'string' ? route.meta.title : 'Mulligan')
+const title = computed(() => typeof route.meta.title === 'string' ? route.meta.title : nb.appName)
 const description = computed(() => typeof route.meta.description === 'string' ? route.meta.description : '')
 </script>
 
@@ -18,7 +20,7 @@ const description = computed(() => typeof route.meta.description === 'string' ? 
 
       <div class="min-w-0 flex-1">
         <p class="text-xs font-semibold uppercase tracking-[0.28em] text-primary/70">
-          Mulligan
+          {{ nb.appName }}
         </p>
         <h1 class="text-xl font-semibold tracking-tight text-foreground">
           {{ title }}
@@ -32,13 +34,13 @@ const description = computed(() => typeof route.meta.description === 'string' ? 
         <Button as-child variant="outline">
           <RouterLink to="/players">
             <CalendarRangeIcon data-icon="inline-start" />
-            Players
+            {{ copy.players }}
           </RouterLink>
         </Button>
         <Button as-child>
           <RouterLink to="/competitions/new">
             <FolderPlusIcon data-icon="inline-start" />
-            New Competition
+            {{ copy.newCompetition }}
           </RouterLink>
         </Button>
       </div>

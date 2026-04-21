@@ -26,6 +26,7 @@ import {
 } from '@/components/ui/number-field'
 import { Textarea } from '@/components/ui/textarea'
 import type { PlayerProfile } from '@/lib/golf'
+import { nb } from '@/locales/nb'
 
 const props = defineProps<{
   open: boolean
@@ -50,6 +51,7 @@ const draft = reactive({
   homeClub: '',
   notes: '',
 })
+const copy = nb.playerDialog
 
 watch(
   () => props.player,
@@ -69,7 +71,7 @@ function close() {
 
 function submit() {
   if (!draft.name.trim()) {
-    toast.error('A player name is required.')
+    toast.error(copy.nameRequired)
     return
   }
 
@@ -89,24 +91,24 @@ function submit() {
     <DialogContent class="sm:max-w-xl">
       <DialogHeader>
         <DialogTitle>
-          {{ player ? 'Edit Player' : 'Add Player' }}
+          {{ player ? copy.titles.edit : copy.titles.add }}
         </DialogTitle>
         <DialogDescription>
-          Save the name and handicap snapshot you want to reuse during local competitions.
+          {{ copy.description }}
         </DialogDescription>
       </DialogHeader>
 
       <FieldGroup>
         <Field>
           <FieldLabel for="player-name">
-            Name
+            {{ copy.fields.name }}
           </FieldLabel>
-          <Input id="player-name" v-model="draft.name" placeholder="Mats" />
+          <Input id="player-name" v-model="draft.name" :placeholder="copy.placeholders.name" />
         </Field>
 
         <Field>
           <FieldLabel>
-            Handicap Index
+            {{ copy.fields.handicapIndex }}
           </FieldLabel>
           <NumberField v-model="draft.handicapIndex" :min="-5" :max="54" :step="0.1">
             <NumberFieldContent>
@@ -116,31 +118,31 @@ function submit() {
             </NumberFieldContent>
           </NumberField>
           <FieldDescription>
-            This value is copied into each competition snapshot when you create a round.
+            {{ copy.handicapDescription }}
           </FieldDescription>
         </Field>
 
         <Field>
           <FieldLabel for="player-home-club">
-            Home Club
+            {{ copy.fields.homeClub }}
           </FieldLabel>
-          <Input id="player-home-club" v-model="draft.homeClub" placeholder="Stavanger Golfklubb" />
+          <Input id="player-home-club" v-model="draft.homeClub" :placeholder="copy.placeholders.homeClub" />
         </Field>
 
         <Field>
           <FieldLabel for="player-notes">
-            Notes
+            {{ copy.fields.notes }}
           </FieldLabel>
-          <Textarea id="player-notes" v-model="draft.notes" rows="4" placeholder="Optional reminders about tees or competition preferences." />
+          <Textarea id="player-notes" v-model="draft.notes" rows="4" :placeholder="copy.placeholders.notes" />
         </Field>
       </FieldGroup>
 
       <DialogFooter>
         <Button variant="outline" @click="close">
-          Cancel
+          {{ copy.cancel }}
         </Button>
         <Button @click="submit">
-          Save Player
+          {{ copy.save }}
         </Button>
       </DialogFooter>
     </DialogContent>

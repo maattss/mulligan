@@ -9,6 +9,13 @@ import {
   TrophyIcon,
   UsersRoundIcon,
 } from 'lucide-vue-next'
+import {
+  PopoverArrow,
+  PopoverContent,
+  PopoverPortal,
+  PopoverRoot,
+  PopoverTrigger,
+} from 'reka-ui'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -41,13 +48,28 @@ import {
   COMPETITION_FORMATS,
   createCompetitionFromSetup,
   getDefaultAllowanceRule,
+  getFormatInfo,
   getFormatLabel,
+  getFormatPlayerCountLabel,
+  isValidPlayerCount,
   isTeamFormat,
   supportsSkins,
   type CompetitionFormat,
   type CompetitionSideGame,
   type SkinsMode,
 } from '@/lib/golf'
+import {
+  formatAllowanceDescription,
+  formatAutoAssignedSide,
+  formatCourseHoleBadge,
+  formatHandicapIndexBadge,
+  formatInvalidPlayerCount,
+  formatPercentageAllowanceLabel,
+  formatPlayerCountSelection,
+  getDefaultCompetitionName,
+  getSkinsModeLabel,
+  nb,
+} from '@/locales/nb'
 import { useCompetitionsStore } from '@/stores/competitions'
 import { usePlayersStore } from '@/stores/players'
 
@@ -55,10 +77,12 @@ const router = useRouter()
 const playersStore = usePlayersStore()
 const competitionsStore = useCompetitionsStore()
 const courses = getCourses()
+const today = getTodayInputValue()
+const copy = nb.competitionSetup
 
 const form = reactive({
-  name: createDefaultCompetitionName(),
-  date: new Date().toISOString().slice(0, 10),
+  name: getDefaultCompetitionName(today),
+  date: today,
   format: 'stroke' as CompetitionFormat,
   holes: 18 as 9 | 18,
   courseId: courses[0]?.id ?? '',
@@ -79,7 +103,13 @@ const selectedPlayers = computed(() =>
 )
 
 const isTeamCompetition = computed(() => isTeamFormat(form.format))
-const requiresExactPair = computed(() => form.format === 'match-play')
+const formatCards = computed(() =>
+  COMPETITION_FORMATS.map((format) => ({
+    id: format,
+    ...getFormatInfo(format),
+    playerCountLabel: getFormatPlayerCountLabel(format),
+  })),
+)
 
 watch(
   () => [playersStore.sortedPlayers, selectedCourse.value?.id] as const,
@@ -127,30 +157,24 @@ watch(
 
 const validationMessage = computed(() => {
   if (!selectedCourse.value) {
-    return 'Choose a course from the bundled catalog.'
+    return copy.validation.selectCourse
   }
 
   if (!form.name.trim()) {
-    return 'Give the competition a name.'
+    return copy.validation.enterName
   }
 
-  if (selectedPlayers.value.length === 0) {
-    return 'Select at least one player.'
+  const playerCount = selectedPlayers.value.length
+
+  if (playerCount === 0) {
+    return formatPlayerCountSelection(form.format)
   }
 
-  if (requiresExactPair.value && selectedPlayers.value.length !== 2) {
-    return 'Individual match play requires exactly 2 players.'
-  }
-
-  if ((form.format === 'stroke' || form.format === 'stableford') && selectedPlayers.value.length < 2) {
-    return 'Individual competitions need at least 2 players.'
+  if (!isValidPlayerCount(form.format, playerCount)) {
+    return formatInvalidPlayerCount(form.format)
   }
 
   if (isTeamCompetition.value) {
-    if (selectedPlayers.value.length < 4 || selectedPlayers.value.length % 2 !== 0) {
-      return 'Team formats need an even number of players and at least 4 selected.'
-    }
-
     const sideCounts = selectedPlayers.value.reduce<Record<string, number>>((counts, player) => {
       const sideId = selections[player.id]?.sideId
       counts[sideId] = (counts[sideId] ?? 0) + 1
@@ -158,7 +182,7 @@ const validationMessage = computed(() => {
     }, {})
 
     if (!Object.values(sideCounts).every((count) => count === 2)) {
-      return 'Each side must contain exactly 2 players.'
+      return copy.validation.invalidTeams
     }
   }
 
@@ -174,7 +198,7 @@ async function createCompetition() {
   const course = selectedCourse.value
 
   if (!course) {
-    toast.error('The selected course could not be found in the catalog.')
+    toast.error(copy.toasts.courseNotFound)
     return
   }
 
@@ -183,7 +207,7 @@ async function createCompetition() {
     ? {
         ...allowanceRule,
         percentage: form.allowancePercentage / 100,
-        label: `${form.allowancePercentage}% handicap allowance`,
+        label: formatPercentageAllowanceLabel(form.allowancePercentage),
       }
     : allowanceRule
 
@@ -218,11 +242,11 @@ async function createCompetition() {
   )
 
   await competitionsStore.saveCompetition(competition)
-  toast.success('Competition created.')
+  toast.success(copy.toasts.created)
 
   const summary = buildCompetitionSummary(competition)
   if (summary.leaderboard.length === 0) {
-    toast.info('Round created. Start entering hole scores.')
+    toast.info(copy.toasts.roundReady)
   }
 
   await router.push(`/competitions/${competition.id}`)
@@ -233,15 +257,24 @@ function autoAssignSides() {
     return
   }
 
+  if (form.format === 'scramble-2' && selectedPlayers.value.length <= 2) {
+    selectedPlayers.value.forEach((player) => {
+      selections[player.id].sideId = 'side-1'
+    })
+    return
+  }
+
   selectedPlayers.value.forEach((player, index) => {
     const sideNumber = Math.floor(index / 2) + 1
     selections[player.id].sideId = `side-${sideNumber}`
   })
 }
 
-function createDefaultCompetitionName() {
+function getTodayInputValue() {
   const date = new Date()
-  return `Buddy Game ${date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`
+  const timezoneOffset = date.getTimezoneOffset() * 60_000
+
+  return new Date(date.getTime() - timezoneOffset).toISOString().slice(0, 10)
 }
 </script>
 
@@ -250,41 +283,86 @@ function createDefaultCompetitionName() {
     <div class="space-y-6">
       <Card class="rounded-[1.75rem] border-border/80 bg-card/70 backdrop-blur">
         <CardHeader>
-          <CardTitle>Competition Basics</CardTitle>
+          <CardTitle>{{ copy.basics.title }}</CardTitle>
           <CardDescription>
-            Name the round, choose the format, and decide whether you are scoring 9 or 18 holes.
+            {{ copy.basics.description }}
           </CardDescription>
         </CardHeader>
         <CardContent class="space-y-6">
           <FieldGroup>
             <Field>
               <FieldLabel for="competition-name">
-                Competition Name
+                {{ copy.basics.fields.name }}
               </FieldLabel>
               <Input id="competition-name" v-model="form.name" />
             </Field>
 
             <Field>
               <FieldLabel for="competition-date">
-                Date
+                {{ copy.basics.fields.date }}
               </FieldLabel>
               <Input id="competition-date" v-model="form.date" type="date" />
             </Field>
           </FieldGroup>
 
           <Field class="gap-3">
-            <FieldLabel>Format</FieldLabel>
+            <div class="flex items-center gap-2">
+              <FieldLabel>{{ copy.basics.fields.format }}</FieldLabel>
+              <PopoverRoot>
+                <PopoverTrigger as-child>
+                  <Button variant="ghost" size="icon" class="size-8 rounded-full text-muted-foreground">
+                    <CircleHelpIcon class="size-4" />
+                    <span class="sr-only">{{ copy.basics.formatHelp.srLabel }}</span>
+                  </Button>
+                </PopoverTrigger>
+                <PopoverPortal>
+                  <PopoverContent
+                    side="bottom"
+                    align="start"
+                    :side-offset="10"
+                    class="bg-popover text-popover-foreground z-50 w-[min(92vw,28rem)] rounded-2xl border border-border/80 p-4 shadow-xl outline-none"
+                  >
+                    <div class="space-y-4">
+                      <div>
+                        <p class="text-sm font-semibold">{{ copy.basics.formatHelp.title }}</p>
+                        <p class="mt-1 text-sm text-muted-foreground">
+                          {{ copy.basics.formatHelp.description }}
+                        </p>
+                      </div>
+
+                      <div class="space-y-3">
+                        <div
+                          v-for="format in formatCards"
+                          :key="format.id"
+                          class="rounded-2xl border border-border/70 bg-background/80 p-3"
+                        >
+                          <div class="flex items-start justify-between gap-3">
+                            <p class="font-medium">{{ format.label }}</p>
+                            <Badge variant="outline" class="rounded-full text-xs">
+                              {{ format.playerCountLabel }}
+                            </Badge>
+                          </div>
+                          <p class="mt-2 text-sm text-foreground/90">{{ format.summary }}</p>
+                          <p class="mt-1 text-sm text-muted-foreground">{{ format.details }}</p>
+                        </div>
+                      </div>
+                    </div>
+                    <PopoverArrow class="fill-popover" />
+                  </PopoverContent>
+                </PopoverPortal>
+              </PopoverRoot>
+            </div>
             <ToggleGroup v-model="form.format" type="single" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               <ToggleGroupItem
-                v-for="format in COMPETITION_FORMATS"
-                :key="format"
-                :value="format"
+                v-for="format in formatCards"
+                :key="format.id"
+                :value="format.id"
                 class="h-auto min-h-20 rounded-2xl border border-border/70 px-4 py-4 text-left data-[state=on]:border-primary data-[state=on]:bg-primary/10"
               >
                 <div class="flex flex-col items-start gap-2">
-                  <span class="font-medium">{{ getFormatLabel(format) }}</span>
+                  <span class="font-medium">{{ format.label }}</span>
                   <span class="text-xs text-muted-foreground">
-                    {{ format }}
+                    {{ format.playerCountLabel }}
                   </span>
                 </div>
               </ToggleGroupItem>
@@ -292,20 +370,20 @@ function createDefaultCompetitionName() {
           </Field>
 
           <Field class="gap-3">
-            <FieldLabel>Holes</FieldLabel>
+            <FieldLabel>{{ copy.basics.fields.holes }}</FieldLabel>
             <ToggleGroup v-model="form.holes" type="single" class="gap-3">
               <ToggleGroupItem :value="9" class="rounded-full px-6">
-                9 holes
+                {{ copy.basics.holeOptions.nine }}
               </ToggleGroupItem>
               <ToggleGroupItem :value="18" class="rounded-full px-6">
-                18 holes
+                {{ copy.basics.holeOptions.eighteen }}
               </ToggleGroupItem>
             </ToggleGroup>
           </Field>
 
           <Field v-if="getDefaultAllowanceRule(form.format).kind === 'percentage'">
             <FieldLabel for="allowance-percentage">
-              Allowance Percentage
+              {{ copy.basics.fields.allowancePercentage }}
             </FieldLabel>
             <Input
               id="allowance-percentage"
@@ -316,7 +394,7 @@ function createDefaultCompetitionName() {
               step="1"
             />
             <FieldDescription>
-              Default policy for this format is {{ getDefaultAllowanceRule(form.format).label.toLowerCase() }}.
+              {{ formatAllowanceDescription(getDefaultAllowanceRule(form.format).label) }}
             </FieldDescription>
           </Field>
         </CardContent>
@@ -324,17 +402,17 @@ function createDefaultCompetitionName() {
 
       <Card class="rounded-[1.75rem] border-border/80 bg-card/70 backdrop-blur">
         <CardHeader>
-          <CardTitle>Course And Tees</CardTitle>
+          <CardTitle>{{ copy.course.title }}</CardTitle>
           <CardDescription>
-            Pick a bundled local course and assign tees per player before the competition snapshot is created.
+            {{ copy.course.description }}
           </CardDescription>
         </CardHeader>
         <CardContent class="space-y-6">
           <Field>
-            <FieldLabel>Course</FieldLabel>
+            <FieldLabel>{{ copy.course.fieldLabel }}</FieldLabel>
             <Select v-model="form.courseId">
               <SelectTrigger>
-                <SelectValue placeholder="Choose a course" />
+                <SelectValue :placeholder="copy.course.placeholder" />
               </SelectTrigger>
               <SelectContent>
                 <SelectGroup>
@@ -350,7 +428,7 @@ function createDefaultCompetitionName() {
             <div class="flex items-start justify-between gap-4">
               <div>
                 <p class="text-xs font-semibold uppercase tracking-[0.24em] text-primary/70">
-                  Course Snapshot
+                  {{ copy.course.snapshotLabel }}
                 </p>
                 <h3 class="mt-2 text-lg font-semibold">
                   {{ selectedCourse.clubName }}
@@ -360,7 +438,7 @@ function createDefaultCompetitionName() {
                 </p>
               </div>
               <Badge variant="secondary" class="rounded-full">
-                {{ selectedCourse.holes }} holes
+                {{ formatCourseHoleBadge(selectedCourse.holes) }}
               </Badge>
             </div>
 
@@ -384,23 +462,23 @@ function createDefaultCompetitionName() {
     <div class="space-y-6">
       <Card class="rounded-[1.75rem] border-border/80 bg-card/70 backdrop-blur">
         <CardHeader>
-          <CardTitle>Players And Side Games</CardTitle>
+          <CardTitle>{{ copy.players.title }}</CardTitle>
           <CardDescription>
-            Select the buddies playing today, then let the app carry their names and handicaps into the round.
+            {{ copy.players.description }}
           </CardDescription>
         </CardHeader>
         <CardContent class="space-y-6">
           <Empty v-if="playersStore.sortedPlayers.length === 0" class="rounded-[1.5rem] border-border/80 bg-background/70">
             <EmptyHeader>
-              <EmptyTitle>No player profiles yet</EmptyTitle>
+              <EmptyTitle>{{ copy.players.emptyTitle }}</EmptyTitle>
               <EmptyDescription>
-                Create a few players first so this competition can snapshot their handicaps correctly.
+                {{ copy.players.emptyDescription }}
               </EmptyDescription>
             </EmptyHeader>
             <Button as-child variant="outline" class="rounded-full">
               <RouterLink to="/players">
                 <UsersRoundIcon data-icon="inline-start" />
-                Go to Players
+                {{ copy.players.emptyAction }}
               </RouterLink>
             </Button>
           </Empty>
@@ -418,19 +496,19 @@ function createDefaultCompetitionName() {
                       {{ player.name }}
                     </p>
                     <p class="text-sm text-muted-foreground">
-                      {{ player.homeClub ?? 'No home club saved' }}
+                      {{ player.homeClub ?? copy.players.homeClubFallback }}
                     </p>
                   </div>
                   <Badge variant="secondary" class="rounded-full">
-                    HI {{ player.handicapIndex.toFixed(1) }}
+                    {{ formatHandicapIndexBadge(player.handicapIndex) }}
                   </Badge>
                 </div>
 
                 <div class="flex items-center justify-between gap-3 rounded-2xl border border-border/70 bg-card/40 px-4 py-3">
                   <div>
-                    <p class="font-medium">Include in this competition</p>
+                    <p class="font-medium">{{ copy.players.includeTitle }}</p>
                     <p class="text-sm text-muted-foreground">
-                      Snapshot the player and choose the tee before the round starts.
+                      {{ copy.players.includeDescription }}
                     </p>
                   </div>
                   <Switch v-model="selections[player.id].selected" />
@@ -438,10 +516,10 @@ function createDefaultCompetitionName() {
 
                 <div v-if="selections[player.id].selected" class="grid gap-3">
                   <Field>
-                    <FieldLabel>Tee</FieldLabel>
+                    <FieldLabel>{{ copy.players.teeLabel }}</FieldLabel>
                     <Select v-model="selections[player.id].teeId">
                       <SelectTrigger>
-                        <SelectValue placeholder="Choose tee" />
+                        <SelectValue :placeholder="copy.players.teePlaceholder" />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectGroup>
@@ -454,7 +532,7 @@ function createDefaultCompetitionName() {
                   </Field>
 
                   <div v-if="isTeamCompetition" class="rounded-2xl border border-border/70 bg-card/40 px-4 py-3 text-sm text-muted-foreground">
-                    Auto-assigned to {{ selections[player.id].sideId.replace('-', ' ').toUpperCase() }}
+                    {{ formatAutoAssignedSide(selections[player.id].sideId) }}
                   </div>
                 </div>
               </div>
@@ -466,22 +544,22 @@ function createDefaultCompetitionName() {
           <div class="space-y-4 rounded-[1.5rem] border border-border/80 bg-background/70 p-4">
             <div class="flex items-start justify-between gap-4">
               <div>
-                <p class="font-medium">Skins side game</p>
+                <p class="font-medium">{{ copy.skins.title }}</p>
                 <p class="text-sm text-muted-foreground">
-                  Available on stroke-based formats only.
+                  {{ copy.skins.description }}
                 </p>
               </div>
               <Switch :disabled="!supportsSkins(form.format)" v-model="form.skinsEnabled" />
             </div>
 
             <Field v-if="form.skinsEnabled">
-              <FieldLabel>Skins Mode</FieldLabel>
+              <FieldLabel>{{ copy.skins.modeLabel }}</FieldLabel>
               <ToggleGroup v-model="form.skinsMode" type="single" class="gap-3">
                 <ToggleGroupItem value="gross" class="rounded-full px-6">
-                  Gross
+                  {{ getSkinsModeLabel('gross') }}
                 </ToggleGroupItem>
                 <ToggleGroupItem value="net" class="rounded-full px-6">
-                  Net
+                  {{ getSkinsModeLabel('net') }}
                 </ToggleGroupItem>
               </ToggleGroup>
             </Field>
@@ -491,9 +569,9 @@ function createDefaultCompetitionName() {
 
       <Card class="rounded-[1.75rem] border-border/80 bg-card/70 backdrop-blur">
         <CardHeader>
-          <CardTitle>Pre-Round Check</CardTitle>
+          <CardTitle>{{ copy.preRound.title }}</CardTitle>
           <CardDescription>
-            The whole round is snapshotted locally when you start the competition.
+            {{ copy.preRound.description }}
           </CardDescription>
         </CardHeader>
         <CardContent class="space-y-4">
@@ -501,7 +579,7 @@ function createDefaultCompetitionName() {
             <div class="rounded-2xl border border-border/80 bg-background/70 p-4">
               <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.24em] text-primary/70">
                 <TrophyIcon class="size-4" />
-                Format
+                {{ copy.preRound.cards.format }}
               </p>
               <p class="mt-2 text-base font-medium">
                 {{ getFormatLabel(form.format) }}
@@ -510,16 +588,16 @@ function createDefaultCompetitionName() {
             <div class="rounded-2xl border border-border/80 bg-background/70 p-4">
               <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.24em] text-primary/70">
                 <MapPinnedIcon class="size-4" />
-                Course
+                {{ copy.preRound.cards.course }}
               </p>
               <p class="mt-2 text-base font-medium">
-                {{ selectedCourse?.clubName ?? 'Choose a course' }}
+                {{ selectedCourse?.clubName ?? copy.preRound.courseFallback }}
               </p>
             </div>
             <div class="rounded-2xl border border-border/80 bg-background/70 p-4">
               <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.24em] text-primary/70">
                 <UsersRoundIcon class="size-4" />
-                Selected players
+                {{ copy.preRound.cards.selectedPlayers }}
               </p>
               <p class="mt-2 text-base font-medium">
                 {{ selectedPlayers.length }}
@@ -528,7 +606,7 @@ function createDefaultCompetitionName() {
             <div class="rounded-2xl border border-border/80 bg-background/70 p-4">
               <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.24em] text-primary/70">
                 <CalculatorIcon class="size-4" />
-                Allowance
+                {{ copy.preRound.cards.allowance }}
               </p>
               <p class="mt-2 text-base font-medium">
                 {{ getDefaultAllowanceRule(form.format).kind === 'percentage' ? `${form.allowancePercentage}%` : getDefaultAllowanceRule(form.format).label }}
@@ -539,12 +617,12 @@ function createDefaultCompetitionName() {
           <div class="rounded-[1.5rem] border border-dashed border-border/80 bg-background/70 p-4 text-sm text-muted-foreground">
             <p class="flex items-center gap-2 font-medium text-foreground">
               <CircleHelpIcon class="size-4 text-primary" />
-              {{ validationMessage || 'Everything looks valid. Start the competition when you are ready.' }}
+              {{ validationMessage || copy.preRound.validMessage }}
             </p>
           </div>
 
           <Button class="h-12 w-full rounded-full text-base" @click="createCompetition">
-            Start Competition
+            {{ copy.preRound.action }}
           </Button>
         </CardContent>
       </Card>

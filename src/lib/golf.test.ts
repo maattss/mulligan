@@ -9,10 +9,13 @@ import {
   createCompetitionFromSetup,
   createEmptyScoreArray,
   getDefaultAllowanceRule,
+  getFormatInfo,
+  getFormatPlayerCountLabel,
   getNetScore,
   getStablefordPoints,
   getStrokeAdjustments,
   isTeamFormat,
+  isValidPlayerCount,
   resolveCompleteHoles,
   roundHandicap,
   supportsSkins,
@@ -224,6 +227,20 @@ describe('format helpers', () => {
     expect(getDefaultAllowanceRule('fourball-stroke')).toMatchObject({ kind: 'percentage', percentage: 0.85 })
     expect(getDefaultAllowanceRule('scramble-2')).toMatchObject({ kind: 'scramble-pair', lowPercentage: 0.35, highPercentage: 0.15 })
   })
+
+  it('exposes format metadata and supported player counts', () => {
+    expect(getFormatInfo('stroke')).toMatchObject({
+      label: 'Individuell Stroke Play',
+      playerCounts: [2, 3, 4],
+      skinsSupported: true,
+    })
+    expect(getFormatPlayerCountLabel('stroke')).toBe('2, 3 eller 4 spillere')
+    expect(getFormatPlayerCountLabel('scramble-2')).toBe('2 eller 4 spillere')
+    expect(isValidPlayerCount('stroke', 3)).toBe(true)
+    expect(isValidPlayerCount('stroke', 5)).toBe(false)
+    expect(isValidPlayerCount('scramble-2', 2)).toBe(true)
+    expect(isValidPlayerCount('scramble-2', 3)).toBe(false)
+  })
 })
 
 describe('createCompetitionFromSetup + leaderboard', () => {
@@ -294,7 +311,7 @@ describe('createCompetitionFromSetup + leaderboard', () => {
     const summary = buildCompetitionSummary(competition)
     expect(summary.leaderboard).toHaveLength(2)
     const leader = summary.leaderboard.find((entry) => entry.position === 1)
-    expect(leader?.matchStatus).toMatch(/Leading wins|Leading|All square/)
+    expect(leader?.matchStatus).toMatch(/Vinner|Leder|All square/)
   })
 
   it('builds a fourball-stroke leaderboard from per-side best ball', () => {
@@ -334,6 +351,26 @@ describe('createCompetitionFromSetup + leaderboard', () => {
     const summary = buildCompetitionSummary(competition)
     expect(summary.leaderboard).toHaveLength(2)
     expect(summary.leaderboard[0].grossTotal).toBe(72)
+    expect(resolveCompleteHoles(competition)).toBe(18)
+  })
+
+  it('supports scramble-2 with one side of two players', () => {
+    const setup: CompetitionSetupInput = {
+      ...setupStroke(),
+      format: 'scramble-2',
+      players: profiles.slice(0, 2).map((profile) => ({
+        playerId: profile.id,
+        teeId: blackTee.id,
+        sideId: 'side-1',
+      })),
+    }
+    const competition = createCompetitionFromSetup(setup, profiles, demoCourse)
+    expect(competition.sides).toHaveLength(1)
+    expect(competition.sides[0].name).toBe('Lag 1')
+    competition.scores.sideScores[competition.sides[0].id] = par72Scores(0)
+    const summary = buildCompetitionSummary(competition)
+    expect(summary.leaderboard).toHaveLength(1)
+    expect(summary.leaderboard[0].label).toBe('Alice / Bob')
     expect(resolveCompleteHoles(competition)).toBe(18)
   })
 })

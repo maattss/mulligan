@@ -24,7 +24,7 @@ describe('LeaderboardTable', () => {
     const wrapper = mount(LeaderboardTable, {
       props: { entries: [], format: 'stroke' },
     })
-    expect(wrapper.text()).toContain('No leaderboard entries yet.')
+    expect(wrapper.text()).toContain('Ingen resultater ennå.')
   })
 
   it('renders position, gross, net and skins for stroke play', () => {
@@ -39,6 +39,8 @@ describe('LeaderboardTable', () => {
     expect(text).toContain('78')
     expect(text).toContain('72')
     expect(text).toContain('2')
+    expect(wrapper.find('thead').text()).toContain('Brutto')
+    expect(wrapper.find('thead').text()).toContain('Netto')
     expect(wrapper.find('thead').text()).toContain('Hcp')
   })
 
@@ -49,18 +51,18 @@ describe('LeaderboardTable', () => {
         format: 'stableford',
       },
     })
-    expect(wrapper.find('thead').text()).toContain('Points')
+    expect(wrapper.find('thead').text()).toContain('Poeng')
     expect(wrapper.text()).toContain('36')
   })
 
   it('shows the match status column for match play', () => {
     const wrapper = mount(LeaderboardTable, {
       props: {
-        entries: [{ ...baseEntry, matchStatus: '2 up through 12' }],
+        entries: [{ ...baseEntry, matchStatus: 'Leder 2 up etter 12 hull' }],
         format: 'match-play',
       },
     })
     expect(wrapper.find('thead').text()).toContain('Match')
-    expect(wrapper.text()).toContain('2 up through 12')
+    expect(wrapper.text()).toContain('Leder 2 up etter 12 hull')
   })
 })

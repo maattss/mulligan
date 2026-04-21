@@ -1,21 +1,75 @@
-# Vue 3 + Vite
+# Mulligan
 
-This template should help get you started developing with Vue 3 in Vite. The template uses Vue 3 `<script setup>` SFCs, check out the [script setup docs](https://v3.vuejs.org/api/sfc-script-setup.html#sfc-script-setup) to learn more.
+Mulligan er en offline-first golfapp for lokale konkurranser. Appen er laget
+for at én scorer skal kunne håndtere hele flighten på én mobil, med lokal
+lagring av spillere, runder og banedata.
 
-While this project uses Vue.js, Vite supports many popular JS frameworks. [See all the supported frameworks](https://vitejs.dev/guide/#scaffolding-your-first-vite-project).
+Banekatalogen bygges inn i appen ved build-tid, og hver konkurranse tar et
+snapshot av bane, tee og handicapgrunnlag når runden opprettes. Det betyr at
+scoringen fortsetter å fungere selv om katalogen oppdateres senere, eller hvis
+du mister dekning ute på banen.
 
-## Deploy Your Own
+## Hva appen støtter
 
-Deploy your own Vite project with Vercel.
+- Individuell Stroke Play, Individuell Stableford og Individuell Match Play
+- Four-Ball Stroke Play og Four-Ball Stableford
+- 2-spiller Scramble
+- Skins som valgfri sidekonkurranse i stroke-baserte formater
+- 2 til 4 spillere avhengig av valgt format
+- Tee per spiller, beregning av Course Handicap og Playing Handicap
+- Lokal lagring i IndexedDB via Dexie
+- Ingen backend, ingen kontoer og ingen runtime-kall mot ekstern bane-API
 
-[![Deploy with Vercel](https://vercel.com/button)]([https://vercel.com/new/clone?repository-url=https://github.com/vercel/examples/tree/main/framework-boilerplates/vite&template=vite](https://vercel.com/new/clone?demo-description=Vite%2FVue.js%20site%20that%20can%20be%20deployed%20to%20Vercel&demo-image=%2F%2Fimages.ctfassets.net%2Fe5382hct74si%2F2T4BUF3mEBKPJF3jcjU6nS%2F0d4a02e7c48091d13814a4ab513e8734%2FScreen_Shot_2022-04-13_at_10.05.56_PM.png&demo-title=Vite%20-%20Vue&demo-url=https%3A%2F%2Fvite-vue-template.vercel.app%2F&from=templates&project-name=Vite%20-%20Vue&repository-name=vite-vue&repository-url=https%3A%2F%2Fgithub.com%2Fvercel%2Fvercel%2Ftree%2Fmain%2Fexamples%2Fvite&skippable-integrations=1))
+## Kom i gang
 
-_Live Example: https://vite-vue-template.vercel.app_
-
-### Deploying From Your Terminal
-
-You can deploy your new Vite project with a single command from your terminal using [Vercel CLI](https://vercel.com/download):
-
-```shell
-$ vercel
+```bash
+pnpm install
+pnpm dev
 ```
+
+Nyttige kommandoer:
+
+```bash
+pnpm build
+pnpm typecheck
+pnpm test
+pnpm test:e2e
+```
+
+## Banekatalog
+
+Appen bruker en ferdig generert katalog i `src/data/course-catalog.json`.
+Kilden oppdateres via manifestet i `src/data/course-manifest.json` og den
+utviklerstyrte synkskriptet:
+
+```bash
+GOLF_COURSE_API_KEY=... pnpm sync:courses
+```
+
+Runtime-koden gjør ikke kall mot GolfCourseAPI. All data som trengs for å starte
+og score en runde ligger lokalt i appen.
+
+## Prosjektstruktur
+
+```text
+src/
+	views/        rutebaserte skjermer
+	components/   app-shell, scoring, spillerdialoger og UI-primitiver
+	stores/       Pinia stores for spillere og konkurranser
+	lib/          scoringlogikk, handicapberegning, Dexie og kataloghjelpere
+	data/         banekatalog, manifest og overrides
+tests/e2e/      Playwright-flyter
+scripts/        utviklerskript, blant annet banesynk
+docs/           dokumentasjon om appflyt, formater og arkitekturvalg
+```
+
+## Dokumentasjon
+
+- `docs/app-overview.md` forklarer hvordan appen brukes og hvordan delene henger sammen.
+- `docs/spilleformater.md` beskriver formater, spillergrenser og hvordan scoring beregnes.
+- `docs/implementation-plan.md` samler de viktigste tekniske beslutningene i løsningen.
+
+## Teknologi
+
+Vue 3, TypeScript, Vite, Pinia, Dexie, `vite-plugin-pwa`, Tailwind CSS v4 og
+`shadcn/vue`.

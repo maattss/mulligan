@@ -1,3 +1,11 @@
+import {
+  getCompetitionFormatInfo,
+  getDefaultAllowanceLabel,
+  getFormatPlayerCountLabel as getLocalizedFormatPlayerCountLabel,
+  getMatchStatusLabel,
+  getSideLabel,
+} from '@/locales/nb'
+
 export const COMPETITION_FORMATS = [
   'stroke',
   'stableford',
@@ -186,63 +194,82 @@ export interface CompetitionSummary {
   completeHoles: number
 }
 
-const FORMAT_LABELS: Record<CompetitionFormat, string> = {
-  stroke: 'Individual Stroke Play',
-  stableford: 'Individual Stableford',
-  'match-play': 'Individual Match Play',
-  'fourball-stroke': 'Four-Ball Stroke Play',
-  'fourball-stableford': 'Four-Ball Stableford',
-  'scramble-2': '2-Player Scramble',
+export interface CompetitionFormatInfo {
+  label: string
+  summary: string
+  details: string
+  playerCounts: number[]
+  teamFormat: boolean
+  skinsSupported: boolean
 }
 
-const DEFAULT_ALLOWANCE_MAP: Record<CompetitionFormat, AllowanceRuleSnapshot> = {
+type DefaultAllowanceConfig =
+  | Omit<PercentageAllowanceRule, 'label'>
+  | Omit<ScramblePairAllowanceRule, 'label'>
+
+const DEFAULT_ALLOWANCE_MAP: Record<CompetitionFormat, DefaultAllowanceConfig> = {
   stroke: {
     kind: 'percentage',
     percentage: 1,
-    label: '100% handicap allowance',
   },
   stableford: {
     kind: 'percentage',
     percentage: 1,
-    label: '100% handicap allowance',
   },
   'match-play': {
     kind: 'percentage',
     percentage: 1,
-    label: '100% handicap allowance',
   },
   'fourball-stroke': {
     kind: 'percentage',
     percentage: 0.85,
-    label: '85% handicap allowance',
   },
   'fourball-stableford': {
     kind: 'percentage',
     percentage: 0.85,
-    label: '85% handicap allowance',
   },
   'scramble-2': {
     kind: 'scramble-pair',
     lowPercentage: 0.35,
     highPercentage: 0.15,
-    label: '35% low / 15% high',
   },
 }
 
 export function getFormatLabel(format: CompetitionFormat) {
-  return FORMAT_LABELS[format]
+  return getCompetitionFormatInfo(format).label
+}
+
+export function getFormatInfo(format: CompetitionFormat) {
+  return getCompetitionFormatInfo(format)
+}
+
+export function getAllowedPlayerCounts(format: CompetitionFormat) {
+  return [...getCompetitionFormatInfo(format).playerCounts]
+}
+
+export function getFormatPlayerCountLabel(format: CompetitionFormat) {
+  return getLocalizedFormatPlayerCountLabel(format)
+}
+
+export function isValidPlayerCount(format: CompetitionFormat, playerCount: number) {
+  return getCompetitionFormatInfo(format).playerCounts.includes(playerCount)
 }
 
 export function getDefaultAllowanceRule(format: CompetitionFormat): AllowanceRuleSnapshot {
-  return structuredClone(DEFAULT_ALLOWANCE_MAP[format])
+  const allowance = structuredClone(DEFAULT_ALLOWANCE_MAP[format])
+
+  return {
+    ...allowance,
+    label: getDefaultAllowanceLabel(format),
+  }
 }
 
 export function isTeamFormat(format: CompetitionFormat) {
-  return format.startsWith('fourball') || format === 'scramble-2'
+  return getCompetitionFormatInfo(format).teamFormat
 }
 
 export function supportsSkins(format: CompetitionFormat) {
-  return format === 'stroke' || format === 'fourball-stroke' || format === 'scramble-2'
+  return getCompetitionFormatInfo(format).skinsSupported
 }
 
 export function createEmptyScoreArray(holes: number) {
@@ -507,7 +534,7 @@ function buildCompetitionSides(format: CompetitionFormat, players: CompetitionPl
   return Array.from(groups.entries())
     .map(([sideId, members], index) => ({
       id: sideId,
-      name: `Side ${index + 1}`,
+      name: getSideLabel(sideId),
       playerIds: members.map((member) => member.id),
     }))
     .sort((left, right) => left.name.localeCompare(right.name))
@@ -663,20 +690,19 @@ function buildMatchPlayLeaderboard(competition: Competition) {
   }
 
   const holesRemaining = competition.holes - holesPlayed
-  const status = buildMatchStatus(balance, holesRemaining, holesPlayed)
 
   const entries = [
     {
       ...buildIndividualEntry(competition, firstPlayer),
       stablefordPoints: firstWins,
-      matchStatus: statusForPlayer(status, balance >= 0),
+      matchStatus: buildPlayerMatchStatus(balance, holesRemaining, holesPlayed, true),
       holesPlayed,
       relativeHandicap: 0,
     },
     {
       ...buildIndividualEntry(competition, secondPlayer),
       stablefordPoints: secondWins,
-      matchStatus: statusForPlayer(status, balance <= 0),
+      matchStatus: buildPlayerMatchStatus(balance, holesRemaining, holesPlayed, false),
       holesPlayed,
       relativeHandicap: secondPlayer.playingHandicap - Math.min(firstPlayer.playingHandicap, secondPlayer.playingHandicap),
     },
@@ -843,35 +869,8 @@ function buildSideLabel(side: CompetitionSide, players: CompetitionPlayer[]) {
   return playerNames.length > 0 ? playerNames.join(' / ') : side.name
 }
 
-function buildMatchStatus(balance: number, holesRemaining: number, holesPlayed: number) {
-  if (holesPlayed === 0) {
-    return 'All square'
-  }
-
-  if (balance === 0) {
-    return `All square through ${holesPlayed}`
-  }
-
-  const leader = balance > 0 ? 'Player 1' : 'Player 2'
-  const margin = Math.abs(balance)
-
-  if (margin > holesRemaining) {
-    return `${leader} wins ${margin}&${holesRemaining}`
-  }
-
-  return `${leader} ${margin} up through ${holesPlayed}`
-}
-
-function statusForPlayer(status: string, isLeading: boolean) {
-  if (status.startsWith('Player 1')) {
-    return isLeading ? status.replace('Player 1', 'Leading') : status.replace('Player 1', 'Trailing')
-  }
-
-  if (status.startsWith('Player 2')) {
-    return isLeading ? status.replace('Player 2', 'Leading') : status.replace('Player 2', 'Trailing')
-  }
-
-  return status
+function buildPlayerMatchStatus(balance: number, holesRemaining: number, holesPlayed: number, isFirstPlayer: boolean) {
+  return getMatchStatusLabel(balance, holesRemaining, holesPlayed, isFirstPlayer)
 }
 
 function sum(values: number[]) {

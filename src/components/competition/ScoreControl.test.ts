@@ -18,7 +18,7 @@ describe('ScoreControl', () => {
     expect(wrapper.text()).toContain('Alice')
     expect(wrapper.text()).toContain('Black tee')
     expect(wrapper.text()).toContain('PH 6')
-    expect(wrapper.text()).toContain('Hole par 4')
+    expect(wrapper.text()).toContain('Par på hull 4')
     expect(wrapper.find('input').element.value).toBe('4')
   })
 

@@ -3,6 +3,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import CompetitionRoundView from '@/views/CompetitionRoundView.vue'
 import CompetitionSetupView from '@/views/CompetitionSetupView.vue'
 import DashboardView from '@/views/DashboardView.vue'
+import { nb } from '@/locales/nb'
 import PlayersView from '@/views/PlayersView.vue'
 
 const router = createRouter({
@@ -13,8 +14,8 @@ const router = createRouter({
       name: 'dashboard',
       component: DashboardView,
       meta: {
-        title: 'Scoreboard',
-        description: 'Overview of local players, active rounds, and recent results.',
+        title: nb.routes.dashboard.title,
+        description: nb.routes.dashboard.description,
       },
     },
     {
@@ -22,8 +23,8 @@ const router = createRouter({
       name: 'players',
       component: PlayersView,
       meta: {
-        title: 'Players',
-        description: 'Maintain the handicap profiles used when you create local competitions.',
+        title: nb.routes.players.title,
+        description: nb.routes.players.description,
       },
     },
     {
@@ -31,8 +32,8 @@ const router = createRouter({
       name: 'competition-new',
       component: CompetitionSetupView,
       meta: {
-        title: 'New Competition',
-        description: 'Choose the course, format, buddies, tees, and side games before the round starts.',
+        title: nb.routes.competitionNew.title,
+        description: nb.routes.competitionNew.description,
       },
     },
     {
@@ -40,8 +41,8 @@ const router = createRouter({
       name: 'competition-round',
       component: CompetitionRoundView,
       meta: {
-        title: 'Live Round',
-        description: 'Keep score hole-by-hole, review the live leaderboard, and finish the competition offline.',
+        title: nb.routes.competitionRound.title,
+        description: nb.routes.competitionRound.description,
       },
     },
   ],
@@ -53,8 +54,8 @@ const router = createRouter({
 })
 
 router.afterEach((to) => {
-  const title = typeof to.meta.title === 'string' ? to.meta.title : 'Mulligan'
-  document.title = `${title} | Mulligan`
+  const title = typeof to.meta.title === 'string' ? to.meta.title : nb.appName
+  document.title = `${title} | ${nb.appName}`
 })
 
 export default router

@@ -27,9 +27,11 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import type { PlayerProfile } from '@/lib/golf'
+import { formatPlayerRemovedToast, nb } from '@/locales/nb'
 import { usePlayersStore } from '@/stores/players'
 
 const playersStore = usePlayersStore()
+const copy = nb.playersView
 
 const dialogOpen = ref(false)
 const editingPlayer = ref<PlayerProfile | null>(null)
@@ -52,12 +54,12 @@ async function savePlayer(payload: {
   notes?: string
 }) {
   await playersStore.savePlayer(payload)
-  toast.success(payload.id ? 'Player updated.' : 'Player added.')
+  toast.success(payload.id ? copy.toasts.updated : copy.toasts.added)
 }
 
 async function removePlayer(player: PlayerProfile) {
   await playersStore.deletePlayer(player.id)
-  toast.success(`${player.name} removed.`)
+  toast.success(formatPlayerRemovedToast(player.name))
 }
 </script>
 
@@ -66,28 +68,28 @@ async function removePlayer(player: PlayerProfile) {
     <Card class="rounded-[1.75rem] border-border/80 bg-card/70 backdrop-blur">
       <CardHeader class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
-          <CardTitle>Local Player Profiles</CardTitle>
+          <CardTitle>{{ copy.title }}</CardTitle>
           <CardDescription>
-            Each profile stores the handicap and notes that get copied into a competition snapshot.
+            {{ copy.description }}
           </CardDescription>
         </div>
 
         <Button class="rounded-full" @click="createPlayer">
           <PlusIcon data-icon="inline-start" />
-          Add Player
+          {{ copy.addPlayer }}
         </Button>
       </CardHeader>
       <CardContent>
         <Empty v-if="playersStore.sortedPlayers.length === 0" class="min-h-80 rounded-[1.5rem] border-border/80 bg-background/70">
           <EmptyHeader>
-            <EmptyTitle>No players saved yet</EmptyTitle>
+            <EmptyTitle>{{ copy.emptyTitle }}</EmptyTitle>
             <EmptyDescription>
-              Create a few buddies first so the competition setup can pull names and handicaps straight into the round snapshot.
+              {{ copy.emptyDescription }}
             </EmptyDescription>
           </EmptyHeader>
           <Button class="rounded-full" @click="createPlayer">
             <PlusIcon data-icon="inline-start" />
-            Add the first player
+            {{ copy.emptyAction }}
           </Button>
         </Empty>
 
@@ -95,12 +97,12 @@ async function removePlayer(player: PlayerProfile) {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Player</TableHead>
-                <TableHead>Handicap</TableHead>
-                <TableHead>Home Club</TableHead>
-                <TableHead>Notes</TableHead>
+                <TableHead>{{ copy.table.player }}</TableHead>
+                <TableHead>{{ copy.table.handicap }}</TableHead>
+                <TableHead>{{ copy.table.homeClub }}</TableHead>
+                <TableHead>{{ copy.table.notes }}</TableHead>
                 <TableHead class="text-right">
-                  Actions
+                  {{ copy.table.actions }}
                 </TableHead>
               </TableRow>
             </TableHeader>
@@ -110,7 +112,7 @@ async function removePlayer(player: PlayerProfile) {
                   <div class="flex flex-col">
                     <span class="font-medium">{{ player.name }}</span>
                     <span class="text-xs text-muted-foreground">
-                      Snapshot ready for local competitions
+                      {{ copy.table.snapshotReady }}
                     </span>
                   </div>
                 </TableCell>

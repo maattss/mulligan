@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { CompetitionFormat, LeaderboardEntry } from '@/lib/golf'
+import { formatLeaderboardHolesLogged, nb } from '@/locales/nb'
 import {
   Table,
   TableBody,
@@ -14,6 +15,8 @@ defineProps<{
   entries: LeaderboardEntry[]
   format: CompetitionFormat
 }>()
+
+const copy = nb.leaderboard
 </script>
 
 <template>
@@ -21,20 +24,20 @@ defineProps<{
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead>Pos</TableHead>
-          <TableHead>Name</TableHead>
-          <TableHead>Gross</TableHead>
-          <TableHead>Net</TableHead>
+          <TableHead>{{ copy.columns.position }}</TableHead>
+          <TableHead>{{ copy.columns.name }}</TableHead>
+          <TableHead>{{ copy.columns.gross }}</TableHead>
+          <TableHead>{{ copy.columns.net }}</TableHead>
           <TableHead v-if="format === 'stableford' || format === 'fourball-stableford'">
-            Points
+            {{ copy.columns.points }}
           </TableHead>
           <TableHead v-else-if="format === 'match-play'">
-            Match
+            {{ copy.columns.match }}
           </TableHead>
           <TableHead v-else>
-            Hcp
+            {{ copy.columns.handicap }}
           </TableHead>
-          <TableHead>Skins</TableHead>
+          <TableHead>{{ copy.columns.skins }}</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -46,7 +49,7 @@ defineProps<{
             <div class="flex flex-col">
               <span class="font-medium">{{ entry.label }}</span>
               <span class="text-xs text-muted-foreground">
-                {{ entry.holesPlayed }} holes logged
+                {{ formatLeaderboardHolesLogged(entry.holesPlayed) }}
               </span>
             </div>
           </TableCell>
@@ -56,7 +59,7 @@ defineProps<{
             {{ entry.stablefordPoints }}
           </TableCell>
           <TableCell v-else-if="format === 'match-play'">
-            {{ entry.matchStatus ?? 'Waiting for scores' }}
+            {{ entry.matchStatus ?? copy.waitingForScores }}
           </TableCell>
           <TableCell v-else>
             {{ entry.playingHandicap }}
@@ -66,7 +69,7 @@ defineProps<{
           </TableCell>
         </TableRow>
         <TableEmpty v-if="entries.length === 0">
-          No leaderboard entries yet.
+          {{ copy.empty }}
         </TableEmpty>
       </TableBody>
     </Table>

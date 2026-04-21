@@ -11,6 +11,7 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { formatScoreControlParLabel } from '@/locales/nb'
 
 const props = defineProps<{
   label: string
@@ -84,7 +85,7 @@ function handleInput(next: string | number) {
       </div>
 
       <p class="text-xs uppercase tracking-[0.24em] text-muted-foreground">
-        Hole par {{ par }}
+        {{ formatScoreControlParLabel(par) }}
       </p>
     </CardContent>
   </Card>

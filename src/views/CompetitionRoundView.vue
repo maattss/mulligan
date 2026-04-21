@@ -32,14 +32,26 @@ import {
   buildCompetitionSummary,
   buildHoleDetails,
   getFormatLabel,
-  isTeamFormat,
   type Competition,
 } from '@/lib/golf'
+import {
+  formatCurrentHoleDetails,
+  formatHoleLabel,
+  formatPlayerScoreSubtitle,
+  formatPlayingHandicapBadge,
+  formatRoundMeta,
+  formatSkinsCarryoverSummary,
+  formatSkinsWinSummary,
+  getCompetitionStatusLabel,
+  getSkinsModeLabel,
+  nb,
+} from '@/locales/nb'
 import { useCompetitionsStore } from '@/stores/competitions'
 
 const route = useRoute()
 const router = useRouter()
 const competitionsStore = useCompetitionsStore()
+const copy = nb.competitionRound
 
 const competition = computed(() =>
   competitionsStore.findCompetition(String(route.params.competitionId)),
@@ -74,7 +86,7 @@ const scoreEntities = computed(() => {
         .filter((player) => player.sideId === side.id)
         .map((player) => player.displayName)
         .join(' / '),
-      badge: `PH ${side.playingHandicap ?? 0}`,
+      badge: formatPlayingHandicapBadge(side.playingHandicap ?? 0),
       value: current.scores.sideScores[side.id]?.[currentHoleIndex.value] ?? null,
       par: current.players[0]?.teeSnapshot.holePars[currentHoleIndex.value] ?? 4,
       update: (value: number | null) => updateSideScore(side.id, value),
@@ -84,8 +96,8 @@ const scoreEntities = computed(() => {
   return current.players.map((player) => ({
     id: player.id,
     label: player.displayName,
-    subtitle: `${player.teeSnapshot.name} tee${player.sideId ? ` · ${player.sideId.replace('-', ' ')}` : ''}`,
-    badge: `PH ${player.playingHandicap}`,
+    subtitle: formatPlayerScoreSubtitle(player.teeSnapshot.name, player.sideId),
+    badge: formatPlayingHandicapBadge(player.playingHandicap),
     value: current.scores.playerScores[player.id]?.[currentHoleIndex.value] ?? null,
     par: player.teeSnapshot.holePars[currentHoleIndex.value] ?? 4,
     update: (value: number | null) => updatePlayerScore(player.id, value),
@@ -138,7 +150,7 @@ async function toggleCompletion() {
     draft.status = draft.status === 'completed' ? 'in_progress' : 'completed'
   })
 
-  toast.success(competition.value.status === 'completed' ? 'Competition reopened.' : 'Competition marked complete.')
+  toast.success(competition.value.status === 'completed' ? copy.toasts.reopened : copy.toasts.completed)
 }
 </script>
 
@@ -146,13 +158,13 @@ async function toggleCompletion() {
   <div v-if="!competition" class="space-y-6">
     <Empty class="min-h-[55svh] rounded-[2rem] border-border/80 bg-card/70 backdrop-blur">
       <EmptyHeader>
-        <EmptyTitle>Competition not found</EmptyTitle>
+        <EmptyTitle>{{ copy.notFound.title }}</EmptyTitle>
         <EmptyDescription>
-          The requested local round could not be loaded from IndexedDB.
+          {{ copy.notFound.description }}
         </EmptyDescription>
       </EmptyHeader>
       <Button variant="outline" class="rounded-full" @click="router.push('/')">
-        Back to scoreboard
+        {{ copy.notFound.action }}
       </Button>
     </Empty>
   </div>
@@ -164,7 +176,7 @@ async function toggleCompletion() {
           <div class="space-y-3">
             <div class="flex flex-wrap items-center gap-2">
               <Badge variant="secondary" class="rounded-full">
-                {{ competition.status === 'completed' ? 'Completed' : 'Live round' }}
+                {{ getCompetitionStatusLabel(competition.status) }}
               </Badge>
               <Badge variant="outline" class="rounded-full">
                 {{ getFormatLabel(competition.format) }}
@@ -179,7 +191,7 @@ async function toggleCompletion() {
                 {{ competition.name }}
               </CardTitle>
               <CardDescription class="mt-2 text-base">
-                {{ new Date(competition.date).toLocaleDateString() }} · {{ competition.holes }} holes · {{ competition.players.length }} players
+                {{ formatRoundMeta(competition.date, competition.holes, competition.players.length) }}
               </CardDescription>
             </div>
           </div>
@@ -187,7 +199,7 @@ async function toggleCompletion() {
           <div class="flex flex-wrap gap-2">
             <Button variant="outline" class="rounded-full" @click="toggleCompletion">
               <CheckCheckIcon data-icon="inline-start" />
-              {{ competition.status === 'completed' ? 'Reopen round' : 'Mark complete' }}
+              {{ competition.status === 'completed' ? copy.actions.reopen : copy.actions.markComplete }}
             </Button>
           </div>
         </div>
@@ -195,35 +207,35 @@ async function toggleCompletion() {
         <div class="grid gap-4 md:grid-cols-3">
           <div class="rounded-[1.5rem] border border-border/80 bg-background/70 p-4">
             <p class="text-xs font-semibold uppercase tracking-[0.24em] text-primary/70">
-              Current hole
+              {{ copy.cards.currentHole }}
             </p>
             <p class="mt-2 text-3xl font-semibold">
               {{ competition.currentHole }}
             </p>
             <p class="text-sm text-muted-foreground">
-              {{ currentHole ? `Par ${currentHole.par} · SI ${currentHole.strokeIndex}` : 'Select a hole to score.' }}
+              {{ currentHole ? formatCurrentHoleDetails(currentHole.par, currentHole.strokeIndex) : copy.cards.currentHoleFallback }}
             </p>
           </div>
           <div class="rounded-[1.5rem] border border-border/80 bg-background/70 p-4">
             <p class="text-xs font-semibold uppercase tracking-[0.24em] text-primary/70">
-              Completed holes
+              {{ copy.cards.completedHoles }}
             </p>
             <p class="mt-2 text-3xl font-semibold">
               {{ summary?.completeHoles ?? 0 }}
             </p>
             <p class="text-sm text-muted-foreground">
-              All selected scorecards entered through this point.
+              {{ copy.cards.completedHolesHint }}
             </p>
           </div>
           <div class="rounded-[1.5rem] border border-border/80 bg-background/70 p-4">
             <p class="text-xs font-semibold uppercase tracking-[0.24em] text-primary/70">
-              Side games
+              {{ copy.cards.sideGames }}
             </p>
             <p class="mt-2 text-3xl font-semibold">
               {{ competition.sideGames.length }}
             </p>
             <p class="text-sm text-muted-foreground">
-              {{ competition.sideGames.length > 0 ? 'Skins results update live as you score.' : 'No side game attached to this round.' }}
+              {{ competition.sideGames.length > 0 ? copy.cards.sideGamesActiveHint : copy.cards.sideGamesInactiveHint }}
             </p>
           </div>
         </div>
@@ -247,10 +259,10 @@ async function toggleCompletion() {
         <div class="flex justify-between gap-3">
           <Button variant="outline" class="rounded-full" :disabled="competition.currentHole === 1" @click="stepHole(-1)">
             <ArrowLeftIcon data-icon="inline-start" />
-            Previous Hole
+            {{ copy.navigation.previousHole }}
           </Button>
           <Button variant="outline" class="rounded-full" :disabled="competition.currentHole === competition.holes" @click="stepHole(1)">
-            Next Hole
+            {{ copy.navigation.nextHole }}
             <ArrowRightIcon data-icon="inline-end" />
           </Button>
         </div>
@@ -260,13 +272,13 @@ async function toggleCompletion() {
     <Tabs default-value="score" class="space-y-4">
       <TabsList class="w-full justify-start rounded-full bg-card/80 p-1">
         <TabsTrigger value="score" class="rounded-full px-5">
-          Score
+          {{ copy.tabs.score }}
         </TabsTrigger>
         <TabsTrigger value="leaderboard" class="rounded-full px-5">
-          Leaderboard
+          {{ copy.tabs.leaderboard }}
         </TabsTrigger>
         <TabsTrigger value="side-games" class="rounded-full px-5">
-          Side Games
+          {{ copy.tabs.sideGames }}
         </TabsTrigger>
       </TabsList>
 
@@ -290,10 +302,10 @@ async function toggleCompletion() {
           <CardHeader>
             <CardTitle class="flex items-center gap-2">
               <TrophyIcon class="size-5 text-primary" />
-              Live Leaderboard
+              {{ copy.leaderboard.title }}
             </CardTitle>
             <CardDescription>
-              Gross totals, net results, stableford points, and skins all update from the current hole scores.
+              {{ copy.leaderboard.description }}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -307,18 +319,18 @@ async function toggleCompletion() {
           <CardHeader>
             <CardTitle class="flex items-center gap-2">
               <FlagIcon class="size-5 text-primary" />
-              Side Games
+              {{ copy.sideGames.title }}
             </CardTitle>
             <CardDescription>
-              Score-derived side game summaries live next to the round without any extra event tracking.
+              {{ copy.sideGames.description }}
             </CardDescription>
           </CardHeader>
           <CardContent>
             <Empty v-if="!summary?.skins" class="rounded-[1.5rem] border-border/80 bg-background/70">
               <EmptyHeader>
-                <EmptyTitle>No side game attached</EmptyTitle>
+                <EmptyTitle>{{ copy.sideGames.emptyTitle }}</EmptyTitle>
                 <EmptyDescription>
-                  Turn on skins during setup if you want gross or net hole winners to carry alongside the main leaderboard.
+                  {{ copy.sideGames.emptyDescription }}
                 </EmptyDescription>
               </EmptyHeader>
             </Empty>
@@ -326,7 +338,7 @@ async function toggleCompletion() {
             <div v-else class="space-y-4">
               <div class="rounded-[1.5rem] border border-border/80 bg-background/70 p-4">
                 <p class="text-sm text-muted-foreground">
-                  Skins mode: <span class="font-medium text-foreground">{{ summary.skins.mode }}</span>
+                  {{ copy.sideGames.modeLabel }}: <span class="font-medium text-foreground">{{ getSkinsModeLabel(summary.skins.mode) }}</span>
                 </p>
               </div>
 
@@ -341,13 +353,13 @@ async function toggleCompletion() {
                   class="rounded-[1.5rem] border border-border/80 bg-background/70 p-4"
                 >
                   <p class="text-xs font-semibold uppercase tracking-[0.24em] text-primary/70">
-                    Hole {{ hole.hole }}
+                    {{ formatHoleLabel(hole.hole) }}
                   </p>
                   <p class="mt-2 text-base font-medium">
-                    {{ hole.winnerLabel ?? 'Carryover' }}
+                    {{ hole.winnerLabel ?? copy.sideGames.carryover }}
                   </p>
                   <p class="text-sm text-muted-foreground">
-                    {{ hole.winnerLabel ? `${hole.carryValue} skin(s) won with ${hole.winningScore}` : `${hole.carryValue} skin(s) roll to the next hole` }}
+                    {{ hole.winnerLabel ? formatSkinsWinSummary(hole.carryValue, hole.winningScore) : formatSkinsCarryoverSummary(hole.carryValue) }}
                   </p>
                 </div>
               </div>
