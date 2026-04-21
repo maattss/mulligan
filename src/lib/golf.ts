@@ -663,20 +663,19 @@ function buildMatchPlayLeaderboard(competition: Competition) {
   }
 
   const holesRemaining = competition.holes - holesPlayed
-  const status = buildMatchStatus(balance, holesRemaining, holesPlayed)
 
   const entries = [
     {
       ...buildIndividualEntry(competition, firstPlayer),
       stablefordPoints: firstWins,
-      matchStatus: statusForPlayer(status, balance >= 0),
+      matchStatus: matchStatusForPlayer(balance, holesRemaining, holesPlayed, balance >= 0),
       holesPlayed,
       relativeHandicap: 0,
     },
     {
       ...buildIndividualEntry(competition, secondPlayer),
       stablefordPoints: secondWins,
-      matchStatus: statusForPlayer(status, balance <= 0),
+      matchStatus: matchStatusForPlayer(-balance, holesRemaining, holesPlayed, balance <= 0),
       holesPlayed,
       relativeHandicap: secondPlayer.playingHandicap - Math.min(firstPlayer.playingHandicap, secondPlayer.playingHandicap),
     },
@@ -843,7 +842,12 @@ function buildSideLabel(side: CompetitionSide, players: CompetitionPlayer[]) {
   return playerNames.length > 0 ? playerNames.join(' / ') : side.name
 }
 
-function buildMatchStatus(balance: number, holesRemaining: number, holesPlayed: number) {
+function matchStatusForPlayer(
+  balance: number,
+  holesRemaining: number,
+  holesPlayed: number,
+  isLeading: boolean,
+) {
   if (holesPlayed === 0) {
     return 'All square'
   }
@@ -852,26 +856,17 @@ function buildMatchStatus(balance: number, holesRemaining: number, holesPlayed: 
     return `All square etter ${holesPlayed}`
   }
 
-  const leader = balance > 0 ? 'Spiller 1' : 'Spiller 2'
   const margin = Math.abs(balance)
 
   if (margin > holesRemaining) {
-    return `${leader} vinner ${margin}&${holesRemaining}`
+    return isLeading
+      ? `Leder vinner ${margin}&${holesRemaining}`
+      : `Ligger under, taper ${margin}&${holesRemaining}`
   }
 
-  return `${leader} ${margin} opp etter ${holesPlayed}`
-}
-
-function statusForPlayer(status: string, isLeading: boolean) {
-  if (status.startsWith('Spiller 1')) {
-    return isLeading ? status.replace('Spiller 1', 'Leder') : status.replace('Spiller 1', 'Ligger under')
-  }
-
-  if (status.startsWith('Spiller 2')) {
-    return isLeading ? status.replace('Spiller 2', 'Leder') : status.replace('Spiller 2', 'Ligger under')
-  }
-
-  return status
+  return isLeading
+    ? `Leder ${margin} opp etter ${holesPlayed}`
+    : `Ligger under ${margin} ned etter ${holesPlayed}`
 }
 
 function sum(values: number[]) {

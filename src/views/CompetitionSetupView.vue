@@ -453,7 +453,7 @@ function initials(name: string) {
             <div>
               <p class="text-[15px] font-semibold text-[color:var(--color-ink)]">Skins sidegame</p>
               <p class="mt-0.5 text-xs text-[color:var(--color-ink-soft)]">
-                Kun tilgjengelig for stroke-baserte format.
+                Kun tilgjengelig for stroke-baserte formater.
               </p>
             </div>
             <button
