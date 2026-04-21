@@ -23,7 +23,7 @@ const playersStore = usePlayersStore()
 const competitionsStore = useCompetitionsStore()
 const courses = getCourses()
 
-const STEPS = ['Format', 'Course', 'Players', 'Options', 'Start'] as const
+const STEPS = ['Format', 'Bane', 'Spillere', 'Valg', 'Start'] as const
 
 const step = ref(0)
 
@@ -79,22 +79,22 @@ watch(
 )
 
 const issue = computed(() => {
-  if (!form.name.trim()) return 'Name the round.'
-  if (!selectedCourse.value) return 'Choose a course.'
-  if (selectedPlayers.value.length === 0) return 'Select at least one player.'
-  if (requiresPair.value && selectedPlayers.value.length !== 2) return 'Match play needs 2 players.'
+  if (!form.name.trim()) return 'Gi runden et navn.'
+  if (!selectedCourse.value) return 'Velg en bane.'
+  if (selectedPlayers.value.length === 0) return 'Velg minst én spiller.'
+  if (requiresPair.value && selectedPlayers.value.length !== 2) return 'Match play krever 2 spillere.'
   if ((form.format === 'stroke' || form.format === 'stableford') && selectedPlayers.value.length < 2)
-    return 'Add at least 2 players.'
+    return 'Legg til minst 2 spillere.'
   if (isTeamCompetition.value) {
     if (selectedPlayers.value.length < 4 || selectedPlayers.value.length % 2 !== 0) {
-      return 'Team formats need an even count, 4+.'
+      return 'Lagformat krever et partall, minst 4 spillere.'
     }
     const counts = selectedPlayers.value.reduce<Record<string, number>>((acc, p) => {
       const sid = selections[p.id].sideId
       acc[sid] = (acc[sid] ?? 0) + 1
       return acc
     }, {})
-    if (!Object.values(counts).every((c) => c === 2)) return 'Each side must have exactly 2 players.'
+    if (!Object.values(counts).every((c) => c === 2)) return 'Hvert lag må ha nøyaktig 2 spillere.'
   }
   return ''
 })
@@ -142,7 +142,7 @@ function togglePlayer(id: string) {
 
 async function addInlinePlayer() {
   if (!newPlayer.name.trim()) {
-    toast.error('Enter a name.')
+    toast.error('Skriv inn et navn.')
     return
   }
   const saved = await playersStore.savePlayer({
@@ -189,7 +189,7 @@ async function startRound() {
   )
 
   await competitionsStore.saveCompetition(competition)
-  toast.success('Round ready.')
+  toast.success('Runden er klar.')
   router.push(`/competitions/${competition.id}`)
 }
 
@@ -202,7 +202,8 @@ function autoAssignSides() {
 
 function defaultName() {
   const d = new Date()
-  return `${d.toLocaleDateString(undefined, { weekday: 'long' })} round`
+  const weekday = d.toLocaleDateString('nb-NO', { weekday: 'long' })
+  return `${weekday.charAt(0).toUpperCase()}${weekday.slice(1)}srunde`
 }
 
 function teeDotClass(color: string) {
@@ -239,10 +240,10 @@ function initials(name: string) {
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
           <path d="M10 3L5 8l5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
         </svg>
-        {{ step === 0 ? 'Cancel' : 'Back' }}
+        {{ step === 0 ? 'Avbryt' : 'Tilbake' }}
       </button>
       <span data-mono class="text-[10px] text-[color:var(--color-ink-muted)]">
-        Step {{ step + 1 }}/{{ STEPS.length }}
+        Steg {{ step + 1 }}/{{ STEPS.length }}
       </span>
     </div>
 
@@ -263,7 +264,7 @@ function initials(name: string) {
       <!-- Step 0: Format -->
       <div v-if="step === 0" class="mt-6">
         <label class="block">
-          <span data-mono class="text-[10px] text-[color:var(--color-ink-muted)]">Name</span>
+          <span data-mono class="text-[10px] text-[color:var(--color-ink-muted)]">Navn</span>
           <input
             v-model="form.name"
             class="mt-1.5 w-full rounded-2xl border border-[color:var(--color-line)] bg-[color:var(--color-surface)] px-4 py-3 text-[15px] outline-none focus:border-[color:var(--color-accent)]"
@@ -285,7 +286,7 @@ function initials(name: string) {
           </button>
         </div>
 
-        <p data-mono class="mt-5 text-[10px] text-[color:var(--color-ink-muted)]">Holes</p>
+        <p data-mono class="mt-5 text-[10px] text-[color:var(--color-ink-muted)]">Hull</p>
         <div class="mt-2 flex gap-2">
           <button
             v-for="n in [9, 18] as const"
@@ -296,14 +297,14 @@ function initials(name: string) {
               : 'border-[color:var(--color-line)] bg-[color:var(--color-surface)] text-[color:var(--color-ink)]'"
             @click="form.holes = n"
           >
-            {{ n }} holes
+            {{ n }} hull
           </button>
         </div>
       </div>
 
       <!-- Step 1: Course -->
       <div v-if="step === 1" class="mt-6">
-        <p class="text-sm text-[color:var(--color-ink-soft)]">Pick a local course from the bundled catalog.</p>
+        <p class="text-sm text-[color:var(--color-ink-soft)]">Velg en lokal bane fra katalogen.</p>
         <div class="mt-3 overflow-hidden rounded-2xl border border-[color:var(--color-line)] bg-[color:var(--color-surface)]">
           <button
             v-for="course in courses"
@@ -347,7 +348,7 @@ function initials(name: string) {
       <!-- Step 2: Players -->
       <div v-if="step === 2" class="mt-6">
         <p class="text-sm text-[color:var(--color-ink-soft)]">
-          Select the buddies playing. Handicap index and tee drive the stroke allocation.
+          Velg hvem som spiller. Handicap-index og tee styrer slagfordelingen.
         </p>
 
         <div v-if="playersStore.sortedPlayers.length > 0" class="mt-4 overflow-hidden rounded-2xl border border-[color:var(--color-line)] bg-[color:var(--color-surface)]">
@@ -363,7 +364,7 @@ function initials(name: string) {
               <div class="min-w-0 flex-1">
                 <p class="truncate text-[15px] font-medium text-[color:var(--color-ink)]">{{ p.name }}</p>
                 <p data-mono class="mt-0.5 text-[10px] text-[color:var(--color-ink-muted)]">
-                  Index {{ p.handicapIndex.toFixed(1) }}
+                  HCP-index {{ p.handicapIndex.toFixed(1) }}
                 </p>
               </div>
               <div
@@ -412,19 +413,19 @@ function initials(name: string) {
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
             <path d="M7 2v10M2 7h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
           </svg>
-          Add player
+          Legg til spiller
         </button>
 
         <div v-if="newPlayerOpen" class="mt-3 rounded-2xl border border-[color:var(--color-line)] bg-[color:var(--color-surface)] p-4">
           <label class="block">
-            <span data-mono class="text-[10px] text-[color:var(--color-ink-muted)]">Name</span>
+            <span data-mono class="text-[10px] text-[color:var(--color-ink-muted)]">Navn</span>
             <input
               v-model="newPlayer.name"
               class="mt-1.5 w-full rounded-xl border border-[color:var(--color-line)] bg-[color:var(--color-bg)] px-3 py-2.5 text-[15px] outline-none focus:border-[color:var(--color-accent)]"
             />
           </label>
           <label class="mt-3 block">
-            <span data-mono class="text-[10px] text-[color:var(--color-ink-muted)]">Handicap index</span>
+            <span data-mono class="text-[10px] text-[color:var(--color-ink-muted)]">Handicap-index</span>
             <input
               v-model.number="newPlayer.handicapIndex"
               type="number"
@@ -436,11 +437,11 @@ function initials(name: string) {
             <button
               class="flex-1 rounded-xl border border-[color:var(--color-line)] py-2.5 text-sm"
               @click="newPlayerOpen = false"
-            >Cancel</button>
+            >Avbryt</button>
             <button
               class="flex-1 rounded-xl bg-[color:var(--color-accent)] py-2.5 text-sm font-semibold text-[color:var(--color-bg)]"
               @click="addInlinePlayer"
-            >Save</button>
+            >Lagre</button>
           </div>
         </div>
       </div>
@@ -450,9 +451,9 @@ function initials(name: string) {
         <div class="rounded-2xl border border-[color:var(--color-line)] bg-[color:var(--color-surface)] p-4">
           <div class="flex items-start justify-between gap-3">
             <div>
-              <p class="text-[15px] font-semibold text-[color:var(--color-ink)]">Skins side game</p>
+              <p class="text-[15px] font-semibold text-[color:var(--color-ink)]">Skins sidegame</p>
               <p class="mt-0.5 text-xs text-[color:var(--color-ink-soft)]">
-                Only available on stroke-based formats.
+                Kun tilgjengelig for stroke-baserte format.
               </p>
             </div>
             <button
@@ -490,15 +491,15 @@ function initials(name: string) {
       <!-- Step 4: Start -->
       <div v-if="step === 4" class="mt-6 space-y-3">
         <div class="rounded-2xl border border-[color:var(--color-line)] bg-[color:var(--color-surface)] p-4">
-          <p data-mono class="text-[10px] text-[color:var(--color-ink-muted)]">Round</p>
+          <p data-mono class="text-[10px] text-[color:var(--color-ink-muted)]">Runde</p>
           <p data-num class="mt-1 text-2xl font-medium tracking-tight">{{ form.name }}</p>
           <p class="mt-1 text-sm text-[color:var(--color-ink-soft)]">
-            {{ selectedCourse?.clubName }} · {{ getFormatLabel(form.format) }} · {{ form.holes }} holes
+            {{ selectedCourse?.clubName }} · {{ getFormatLabel(form.format) }} · {{ form.holes }} hull
           </p>
         </div>
 
         <div class="rounded-2xl border border-[color:var(--color-line)] bg-[color:var(--color-surface)] p-4">
-          <p data-mono class="text-[10px] text-[color:var(--color-ink-muted)]">Players</p>
+          <p data-mono class="text-[10px] text-[color:var(--color-ink-muted)]">Spillere</p>
           <ul class="mt-2 space-y-2">
             <li
               v-for="p in selectedPlayers"
@@ -511,14 +512,14 @@ function initials(name: string) {
               />
               <span class="flex-1">{{ p.name }}</span>
               <span data-mono class="text-[10px] text-[color:var(--color-ink-muted)]">
-                HI {{ p.handicapIndex.toFixed(1) }}
+                HCP {{ p.handicapIndex.toFixed(1) }}
               </span>
             </li>
           </ul>
         </div>
 
         <div v-if="form.skinsEnabled" class="rounded-2xl border border-[color:var(--color-line)] bg-[color:var(--color-surface)] p-4">
-          <p data-mono class="text-[10px] text-[color:var(--color-ink-muted)]">Side game</p>
+          <p data-mono class="text-[10px] text-[color:var(--color-ink-muted)]">Sidegame</p>
           <p class="mt-1 text-sm">Skins · {{ form.skinsMode }}</p>
         </div>
 
@@ -533,7 +534,7 @@ function initials(name: string) {
         :style="step === 0 ? { opacity: 0.4 } : undefined"
         @click="step = Math.max(0, step - 1)"
       >
-        Back
+        Tilbake
       </button>
       <button
         data-testid="advance"
@@ -541,7 +542,7 @@ function initials(name: string) {
         :disabled="!canAdvance"
         @click="advance"
       >
-        {{ step === STEPS.length - 1 ? 'Start round' : 'Continue' }}
+        {{ step === STEPS.length - 1 ? 'Start runde' : 'Fortsett' }}
       </button>
     </div>
   </div>

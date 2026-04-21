@@ -25,7 +25,7 @@ onMounted(async () => {
     <div v-else class="flex flex-1 items-center justify-center px-6">
       <div class="text-center">
         <p data-mono class="text-[10px] text-[color:var(--color-ink-muted)]">Mulligan</p>
-        <p data-num class="mt-2 text-3xl font-medium tracking-tight">Loading…</p>
+        <p data-num class="mt-2 text-3xl font-medium tracking-tight">Laster…</p>
       </div>
     </div>
 

@@ -187,45 +187,45 @@ export interface CompetitionSummary {
 }
 
 const FORMAT_LABELS: Record<CompetitionFormat, string> = {
-  stroke: 'Individual Stroke Play',
-  stableford: 'Individual Stableford',
-  'match-play': 'Individual Match Play',
+  stroke: 'Individuell Stroke Play',
+  stableford: 'Individuell Stableford',
+  'match-play': 'Individuell Match Play',
   'fourball-stroke': 'Four-Ball Stroke Play',
   'fourball-stableford': 'Four-Ball Stableford',
-  'scramble-2': '2-Player Scramble',
+  'scramble-2': '2-manns Scramble',
 }
 
 const DEFAULT_ALLOWANCE_MAP: Record<CompetitionFormat, AllowanceRuleSnapshot> = {
   stroke: {
     kind: 'percentage',
     percentage: 1,
-    label: '100% handicap allowance',
+    label: '100% handicap-tildeling',
   },
   stableford: {
     kind: 'percentage',
     percentage: 1,
-    label: '100% handicap allowance',
+    label: '100% handicap-tildeling',
   },
   'match-play': {
     kind: 'percentage',
     percentage: 1,
-    label: '100% handicap allowance',
+    label: '100% handicap-tildeling',
   },
   'fourball-stroke': {
     kind: 'percentage',
     percentage: 0.85,
-    label: '85% handicap allowance',
+    label: '85% handicap-tildeling',
   },
   'fourball-stableford': {
     kind: 'percentage',
     percentage: 0.85,
-    label: '85% handicap allowance',
+    label: '85% handicap-tildeling',
   },
   'scramble-2': {
     kind: 'scramble-pair',
     lowPercentage: 0.35,
     highPercentage: 0.15,
-    label: '35% low / 15% high',
+    label: '35% lav / 15% høy',
   },
 }
 
@@ -849,26 +849,26 @@ function buildMatchStatus(balance: number, holesRemaining: number, holesPlayed: 
   }
 
   if (balance === 0) {
-    return `All square through ${holesPlayed}`
+    return `All square etter ${holesPlayed}`
   }
 
-  const leader = balance > 0 ? 'Player 1' : 'Player 2'
+  const leader = balance > 0 ? 'Spiller 1' : 'Spiller 2'
   const margin = Math.abs(balance)
 
   if (margin > holesRemaining) {
-    return `${leader} wins ${margin}&${holesRemaining}`
+    return `${leader} vinner ${margin}&${holesRemaining}`
   }
 
-  return `${leader} ${margin} up through ${holesPlayed}`
+  return `${leader} ${margin} opp etter ${holesPlayed}`
 }
 
 function statusForPlayer(status: string, isLeading: boolean) {
-  if (status.startsWith('Player 1')) {
-    return isLeading ? status.replace('Player 1', 'Leading') : status.replace('Player 1', 'Trailing')
+  if (status.startsWith('Spiller 1')) {
+    return isLeading ? status.replace('Spiller 1', 'Leder') : status.replace('Spiller 1', 'Ligger under')
   }
 
-  if (status.startsWith('Player 2')) {
-    return isLeading ? status.replace('Player 2', 'Leading') : status.replace('Player 2', 'Trailing')
+  if (status.startsWith('Spiller 2')) {
+    return isLeading ? status.replace('Spiller 2', 'Leder') : status.replace('Spiller 2', 'Ligger under')
   }
 
   return status

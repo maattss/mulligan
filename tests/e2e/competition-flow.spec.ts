@@ -9,7 +9,7 @@ test.describe('Mulligan mobile flow', () => {
   test('shows the competitions empty state on a fresh install', async ({ page }) => {
     await page.goto('/')
     await expect(page).toHaveTitle(/Mulligan/)
-    await expect(page.getByRole('heading', { name: 'Competitions' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Runder' })).toBeVisible()
     await expect(page.getByTestId('start-first-competition')).toBeVisible()
   })
 
@@ -24,13 +24,13 @@ test.describe('Mulligan mobile flow', () => {
     await page.getByTestId('advance').click()
 
     // Step 2: Players — add two inline
-    await page.getByRole('button', { name: 'Add player' }).click()
-    await page.getByLabel('Name').fill('Alice')
-    await page.getByRole('button', { name: 'Save' }).click()
+    await page.getByRole('button', { name: 'Legg til spiller' }).click()
+    await page.getByLabel('Navn').fill('Alice')
+    await page.getByRole('button', { name: 'Lagre' }).click()
 
-    await page.getByRole('button', { name: 'Add player' }).click()
-    await page.getByLabel('Name').fill('Bob')
-    await page.getByRole('button', { name: 'Save' }).click()
+    await page.getByRole('button', { name: 'Legg til spiller' }).click()
+    await page.getByLabel('Navn').fill('Bob')
+    await page.getByRole('button', { name: 'Lagre' }).click()
 
     await page.getByTestId('advance').click()
     // Step 3: Options (skip)
