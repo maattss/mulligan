@@ -69,6 +69,11 @@
     color: inherit;
   }
 
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
   [data-num] {
     font-family: var(--font-serif);
     font-variant-numeric: tabular-nums;
@@ -86,4 +91,14 @@
   &::-webkit-scrollbar {
     display: none;
   }
+}
+
+/* Prevent iOS Safari from zooming the viewport when a form control receives
+   focus. iOS only zooms when the effective font-size is below 16px, and it
+   does not automatically zoom back out after blur. These rules live outside
+   @layer so they override Tailwind utilities like text-[15px] on inputs. */
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+textarea,
+select {
+  font-size: 16px;
 }
