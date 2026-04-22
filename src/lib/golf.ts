@@ -195,6 +195,15 @@ const FORMAT_LABELS: Record<CompetitionFormat, string> = {
   'scramble-2': '2-manns Scramble',
 }
 
+const FORMAT_DESCRIPTIONS: Record<CompetitionFormat, string> = {
+  stroke: 'Tell alle slag på hvert hull. Lavest sammenlagt vinner. Netto-score brukes med handicap.',
+  stableford: 'Poeng per hull basert på netto-score mot par: birdie 3p, par 2p, bogey 1p, double bogey+ 0p. Flest poeng vinner.',
+  'match-play': 'To spillere møtes hull for hull. Den som har lavest netto-score vinner hullet. Den som leder med flere hull enn det gjenstår, vinner matchen.',
+  'fourball-stroke': 'Lag på 2. Beste netto-score på hvert hull teller for laget. Lavest sammenlagt vinner.',
+  'fourball-stableford': 'Lag på 2. Beste stableford-poeng på hvert hull teller for laget. Flest poeng vinner.',
+  'scramble-2': 'Lag på 2 som slår hvert sitt tee-skudd, velger beste plassering, og fortsetter derfra til ballen er i hull.',
+}
+
 const DEFAULT_ALLOWANCE_MAP: Record<CompetitionFormat, AllowanceRuleSnapshot> = {
   stroke: {
     kind: 'percentage',
@@ -233,6 +242,10 @@ export function getFormatLabel(format: CompetitionFormat) {
   return FORMAT_LABELS[format]
 }
 
+export function getFormatDescription(format: CompetitionFormat) {
+  return FORMAT_DESCRIPTIONS[format]
+}
+
 export function getDefaultAllowanceRule(format: CompetitionFormat): AllowanceRuleSnapshot {
   return structuredClone(DEFAULT_ALLOWANCE_MAP[format])
 }
@@ -242,7 +255,13 @@ export function isTeamFormat(format: CompetitionFormat) {
 }
 
 export function supportsSkins(format: CompetitionFormat) {
-  return format === 'stroke' || format === 'fourball-stroke' || format === 'scramble-2'
+  return (
+    format === 'stroke' ||
+    format === 'stableford' ||
+    format === 'fourball-stroke' ||
+    format === 'fourball-stableford' ||
+    format === 'scramble-2'
+  )
 }
 
 export function createEmptyScoreArray(holes: number) {
@@ -700,7 +719,7 @@ function buildSkinsSummary(competition: Competition, leaderboard: LeaderboardEnt
 
   const participantMap = new Map<string, { label: string, scoreAtHole: (hole: number) => NullableScore }>()
 
-  if (competition.format === 'stroke') {
+  if (competition.format === 'stroke' || competition.format === 'stableford') {
     for (const player of competition.players) {
       const adjustments = getCompetitionPlayerAdjustments(competition, player)
       const scores = competition.scores.playerScores[player.id]
@@ -715,7 +734,11 @@ function buildSkinsSummary(competition: Competition, leaderboard: LeaderboardEnt
         },
       })
     }
-  } else if (competition.format === 'fourball-stroke' || competition.format === 'scramble-2') {
+  } else if (
+    competition.format === 'fourball-stroke' ||
+    competition.format === 'fourball-stableford' ||
+    competition.format === 'scramble-2'
+  ) {
     for (const side of competition.sides) {
       const leaderboardEntry = leaderboard.find((entry) => entry.id === side.id)
       participantMap.set(side.id, {

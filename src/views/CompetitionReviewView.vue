@@ -95,6 +95,7 @@ function teeDotClass(color?: string) {
   switch (color) {
     case 'red': return 'bg-[color:var(--color-tee-red)]'
     case 'yellow': return 'bg-[color:var(--color-tee-yellow)]'
+    case 'orange': return 'bg-[color:var(--color-tee-orange)]'
     case 'blue': return 'bg-[color:var(--color-tee-blue)]'
     case 'black': return 'bg-[color:var(--color-ink)]'
     case 'white': return 'bg-[color:var(--color-tee-white)] border border-[color:var(--color-line)]'
@@ -147,7 +148,7 @@ function copyText(text: string) {
 
 <template>
   <div v-if="competition" class="flex min-h-[100svh] flex-col pb-10">
-    <header class="flex items-center justify-between px-5 pt-[calc(3.5rem+var(--safe-top))] pb-2.5">
+    <header class="flex items-center justify-between px-5 pt-[calc(0.75rem+var(--safe-top))] pb-2.5">
       <button
         aria-label="Tilbake"
         class="flex items-center gap-1 p-1 text-[color:var(--color-ink-soft)]"

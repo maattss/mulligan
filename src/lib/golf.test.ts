@@ -212,11 +212,12 @@ describe('format helpers', () => {
     expect(isTeamFormat('scramble-2')).toBe(true)
   })
 
-  it('limits skins to stroke-based formats', () => {
+  it('supports skins for all stroke-countable formats', () => {
     expect(supportsSkins('stroke')).toBe(true)
+    expect(supportsSkins('stableford')).toBe(true)
     expect(supportsSkins('fourball-stroke')).toBe(true)
+    expect(supportsSkins('fourball-stableford')).toBe(true)
     expect(supportsSkins('scramble-2')).toBe(true)
-    expect(supportsSkins('stableford')).toBe(false)
     expect(supportsSkins('match-play')).toBe(false)
   })
 
@@ -394,7 +395,7 @@ describe('skins side game', () => {
       name: 'No Skins',
       date: '2026-04-17',
       holes: 18,
-      format: 'stableford',
+      format: 'match-play',
       courseId: demoCourse.id,
       players: profiles.map((profile) => ({ playerId: profile.id, teeId: blackTee.id })),
       sideGames: [{ id: 'sg1', type: 'skins', enabled: true, mode: 'gross' }],
@@ -402,6 +403,27 @@ describe('skins side game', () => {
     const competition = createCompetitionFromSetup(setup, profiles, demoCourse)
     const summary = buildCompetitionSummary(competition)
     expect(summary.skins).toBeNull()
+  })
+
+  it('awards skins alongside stableford scoring', () => {
+    const setup: CompetitionSetupInput = {
+      name: 'Stableford + Skins',
+      date: '2026-04-17',
+      holes: 18,
+      format: 'stableford',
+      courseId: demoCourse.id,
+      players: profiles.map((profile) => ({ playerId: profile.id, teeId: blackTee.id })),
+      sideGames: [{ id: 'sg1', type: 'skins', enabled: true, mode: 'gross' }],
+    }
+    const competition = createCompetitionFromSetup(setup, profiles, demoCourse)
+    const aliceScores = par72Scores(0)
+    const bobScores = par72Scores(0)
+    aliceScores[0] = 3
+    competition.scores.playerScores[competition.players[0].id] = aliceScores
+    competition.scores.playerScores[competition.players[1].id] = bobScores
+    const summary = buildCompetitionSummary(competition)
+    expect(summary.skins).not.toBeNull()
+    expect(summary.skins?.holes[0]).toMatchObject({ winnerLabel: 'Alice', carryValue: 1 })
   })
 })
 
