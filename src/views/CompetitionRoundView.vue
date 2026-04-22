@@ -139,6 +139,7 @@ function teeDotClass(color: string) {
   switch (color) {
     case 'red': return 'bg-[color:var(--color-tee-red)]'
     case 'yellow': return 'bg-[color:var(--color-tee-yellow)]'
+    case 'orange': return 'bg-[color:var(--color-tee-orange)]'
     case 'blue': return 'bg-[color:var(--color-tee-blue)]'
     case 'black': return 'bg-[color:var(--color-ink)]'
     case 'white': return 'bg-[color:var(--color-tee-white)] border border-[color:var(--color-line)]'
@@ -273,7 +274,7 @@ function padTargetLabel() {
 
 <template>
   <div v-if="competition" class="relative flex min-h-[100svh] flex-col bg-[color:var(--color-bg)]">
-    <header class="flex items-center justify-between border-b border-[color:var(--color-line-soft)] px-4 pt-[calc(3.5rem+var(--safe-top))] pb-2.5">
+    <header class="flex items-center justify-between border-b border-[color:var(--color-line-soft)] px-4 pt-[calc(0.75rem+var(--safe-top))] pb-2.5">
       <div class="flex min-w-0 items-center gap-2.5">
         <button
           aria-label="Tilbake"
@@ -306,7 +307,7 @@ function padTargetLabel() {
       </button>
     </header>
 
-    <section class="px-4 pt-4 pb-3">
+    <section class="px-4 pt-3 pb-2">
       <div class="flex justify-center gap-1 overflow-x-auto no-scrollbar">
         <button
           v-for="n in visibleHoles"
@@ -330,10 +331,10 @@ function padTargetLabel() {
         </button>
       </div>
 
-      <div v-if="hole" class="mt-4 flex items-baseline justify-between px-2">
+      <div v-if="hole" class="mt-3 flex items-baseline justify-between px-2">
         <div>
           <p data-mono class="text-[10px] text-[color:var(--color-ink-muted)]">Hull {{ currentHole }}</p>
-          <p data-num class="mt-0.5 text-[42px] font-medium leading-none tracking-[-0.04em] text-[color:var(--color-ink)]">
+          <p data-num class="mt-0.5 text-[clamp(32px,9vw,42px)] font-medium leading-none tracking-[-0.04em] text-[color:var(--color-ink)]">
             Par {{ hole.par }}
           </p>
         </div>
@@ -357,7 +358,7 @@ function padTargetLabel() {
       </div>
     </div>
 
-    <section class="flex-1 overflow-y-auto px-4 pt-3 pb-[260px]">
+    <section class="flex-1 overflow-y-auto px-4 pt-3 pb-3">
       <template v-if="!isScramble">
         <button
           v-for="player in competition.players"
@@ -491,7 +492,7 @@ function padTargetLabel() {
       </p>
     </section>
 
-    <footer class="absolute bottom-0 left-0 right-0 border-t border-[color:var(--color-line)] bg-[color:var(--color-surface-alt)] px-5 pt-3 pb-[calc(1.25rem+var(--safe-bottom))] shadow-[0_-8px_24px_rgba(0,0,0,0.04)]">
+    <footer class="border-t border-[color:var(--color-line)] bg-[color:var(--color-surface-alt)] px-5 pt-3 pb-[calc(0.75rem+var(--safe-bottom))] shadow-[0_-8px_24px_rgba(0,0,0,0.04)]">
       <div class="flex items-baseline justify-between">
         <p data-mono class="text-[10px] text-[color:var(--color-ink-muted)]">
           Leaderboard · etter {{ Math.max(0, currentHole - 1) }}

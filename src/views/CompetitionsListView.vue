@@ -59,7 +59,7 @@ function leader(c: Competition) {
 
 <template>
   <div class="relative flex min-h-[100svh] flex-col pb-[calc(6rem+var(--safe-bottom))]">
-    <header class="px-5 pt-[calc(3.5rem+var(--safe-top))] pb-4">
+    <header class="px-5 pt-[calc(1rem+var(--safe-top))] pb-4">
       <p data-mono class="text-[10px] text-[color:var(--color-ink-muted)]">Mulligan</p>
       <h1 data-num class="mt-1 text-[40px] font-medium leading-none tracking-[-0.04em] text-[color:var(--color-ink)]">
         Runder

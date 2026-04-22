@@ -7,6 +7,7 @@ import {
   COMPETITION_FORMATS,
   createCompetitionFromSetup,
   getDefaultAllowanceRule,
+  getFormatDescription,
   getFormatLabel,
   isTeamFormat,
   supportsSkins,
@@ -17,6 +18,7 @@ import {
 } from '@/lib/golf'
 import { useCompetitionsStore } from '@/stores/competitions'
 import { usePlayersStore } from '@/stores/players'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 
 const router = useRouter()
 const playersStore = usePlayersStore()
@@ -203,7 +205,8 @@ function autoAssignSides() {
 function defaultName() {
   const d = new Date()
   const weekday = d.toLocaleDateString('nb-NO', { weekday: 'long' })
-  return `${weekday.charAt(0).toUpperCase()}${weekday.slice(1)}srunde`
+  const date = d.toLocaleDateString('nb-NO', { day: 'numeric', month: 'short' }).replace('.', '')
+  return `${weekday.charAt(0).toUpperCase()}${weekday.slice(1)}srunde · ${date}`
 }
 
 function teeDotClass(color: string) {
@@ -212,6 +215,8 @@ function teeDotClass(color: string) {
       return 'bg-[color:var(--color-tee-red)]'
     case 'yellow':
       return 'bg-[color:var(--color-tee-yellow)]'
+    case 'orange':
+      return 'bg-[color:var(--color-tee-orange)]'
     case 'blue':
       return 'bg-[color:var(--color-tee-blue)]'
     case 'black':
@@ -235,7 +240,7 @@ function initials(name: string) {
 
 <template>
   <div class="flex min-h-[100svh] flex-col bg-[color:var(--color-bg)]">
-    <div class="flex items-center justify-between px-5 pt-[calc(3.5rem+var(--safe-top))] pb-2">
+    <div class="flex items-center justify-between px-5 pt-[calc(0.75rem+var(--safe-top))] pb-2">
       <button class="flex items-center gap-1 text-[15px] text-[color:var(--color-ink-soft)]" @click="back">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
           <path d="M10 3L5 8l5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
@@ -273,17 +278,44 @@ function initials(name: string) {
 
         <p data-mono class="mt-5 text-[10px] text-[color:var(--color-ink-muted)]">Format</p>
         <div class="mt-2 grid grid-cols-2 gap-2">
-          <button
+          <div
             v-for="f in COMPETITION_FORMATS"
             :key="f"
-            class="rounded-2xl border px-3 py-3 text-left text-[13px] transition"
+            class="relative rounded-2xl border transition"
             :class="form.format === f
               ? 'border-[color:var(--color-accent)] bg-[color:var(--color-accent)] text-[color:var(--color-bg)]'
               : 'border-[color:var(--color-line)] bg-[color:var(--color-surface)] text-[color:var(--color-ink)]'"
-            @click="form.format = f"
           >
-            {{ getFormatLabel(f) }}
-          </button>
+            <button
+              class="w-full px-3 py-3 pr-8 text-left text-[13px]"
+              @click="form.format = f"
+            >
+              {{ getFormatLabel(f) }}
+            </button>
+            <Popover>
+              <PopoverTrigger
+                :aria-label="`Info om ${getFormatLabel(f)}`"
+                class="absolute top-1.5 right-1.5 flex h-6 w-6 items-center justify-center rounded-full border transition"
+                :class="form.format === f
+                  ? 'border-[color:var(--color-bg)]/30 text-[color:var(--color-bg)]'
+                  : 'border-[color:var(--color-line)] text-[color:var(--color-ink-soft)]'"
+                @click.stop
+              >
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                  <circle cx="5" cy="5" r="4.25" stroke="currentColor" stroke-width="1" />
+                  <path d="M5 4.2v2.4M5 3.1v.05" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" />
+                </svg>
+              </PopoverTrigger>
+              <PopoverContent :side-offset="8" align="end" class="w-[260px]">
+                <p class="text-[13px] font-semibold tracking-tight text-[color:var(--color-ink)]">
+                  {{ getFormatLabel(f) }}
+                </p>
+                <p class="mt-1.5 text-[12px] leading-relaxed text-[color:var(--color-ink-soft)]">
+                  {{ getFormatDescription(f) }}
+                </p>
+              </PopoverContent>
+            </Popover>
+          </div>
         </div>
 
         <p data-mono class="mt-5 text-[10px] text-[color:var(--color-ink-muted)]">Hull</p>
@@ -453,7 +485,9 @@ function initials(name: string) {
             <div>
               <p class="text-[15px] font-semibold text-[color:var(--color-ink)]">Skins sidegame</p>
               <p class="mt-0.5 text-xs text-[color:var(--color-ink-soft)]">
-                Kun tilgjengelig for stroke-baserte formater.
+                {{ supportsSkins(form.format)
+                  ? 'Lavest gross/netto på hullet vinner poengene. Kan kombineres med alle score-baserte formater.'
+                  : 'Ikke tilgjengelig for match play.' }}
               </p>
             </div>
             <button
@@ -527,7 +561,7 @@ function initials(name: string) {
       </div>
     </div>
 
-    <div class="flex gap-2 border-t border-[color:var(--color-line)] bg-[color:var(--color-surface-alt)] px-4 py-3 pb-[calc(1.75rem+var(--safe-bottom))]">
+    <div class="flex gap-2 border-t border-[color:var(--color-line)] bg-[color:var(--color-surface-alt)] px-4 py-3 pb-[calc(0.75rem+var(--safe-bottom))]">
       <button
         class="rounded-2xl border border-[color:var(--color-line)] px-5 py-3 text-[15px] font-medium"
         :disabled="step === 0"
