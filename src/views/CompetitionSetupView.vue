@@ -4,7 +4,6 @@ import { useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
 import { getCourseById, getCourses } from '@/lib/course-catalog'
 import {
-  DEFAULT_ALLOWANCE_PERCENTAGE,
   buildPercentageAllowance,
   createCompetitionFromSetup,
   getDefaultAllowanceRule,
@@ -42,7 +41,7 @@ const form = reactive({
   courseId: courses[0]?.id ?? '',
   skinsEnabled: false,
   skinsMode: 'net' as SkinsMode,
-  allowancePercentage: DEFAULT_ALLOWANCE_PERCENTAGE,
+  allowancePercentage: getDefaultPercentage('stableford'),
 })
 
 const ALLOWANCE_PRESETS = [0, 0.5, 0.75, 0.85, 0.9, 1] as const
@@ -204,6 +203,11 @@ function autoAssignSides() {
   selectedPlayers.value.forEach((p, i) => {
     selections[p.id].sideId = `side-${Math.floor(i / 2) + 1}`
   })
+}
+
+function getDefaultPercentage(format: CompetitionFormat) {
+  const rule = getDefaultAllowanceRule(format)
+  return rule.kind === 'percentage' ? rule.percentage : 1
 }
 
 function defaultName() {

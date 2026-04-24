@@ -1,5 +1,7 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { supportsSkins, type CompetitionFormat, type SkinsMode } from '@/lib/golf'
+import { Switch } from '@/components/ui/switch'
 
 const props = defineProps<{
   format: CompetitionFormat
@@ -10,6 +12,18 @@ const props = defineProps<{
 const allowancePercentage = defineModel<number>('allowancePercentage', { required: true })
 const skinsEnabled = defineModel<boolean>('skinsEnabled', { required: true })
 const skinsMode = defineModel<SkinsMode>('skinsMode', { required: true })
+
+const allowanceDescription = computed(() => {
+  if (!props.allowanceIsPercentage) {
+    return 'Scramble bruker 35% av laveste + 15% av høyeste handicap.'
+  }
+
+  if (props.format === 'fourball-stroke' || props.format === 'fourball-stableford') {
+    return 'Four-Ball starter på 75% handicap-tildeling. Justér ved behov.'
+  }
+
+  return 'Individuelle formater starter på 100% handicap-tildeling. Justér ved behov.'
+})
 
 function setSkinsEnabled(value: boolean) {
   if (!supportsSkins(props.format) && value) return
@@ -24,9 +38,7 @@ function setSkinsEnabled(value: boolean) {
         <div>
           <p class="text-[15px] font-semibold text-[color:var(--color-ink)]">Handicap-tildeling</p>
           <p class="mt-0.5 text-xs text-[color:var(--color-ink-soft)]">
-            {{ allowanceIsPercentage
-              ? 'WHS anbefaler 75% for sosiale runder. Justér etter smak.'
-              : 'Scramble bruker 35% av laveste + 15% av høyeste handicap.' }}
+            {{ allowanceDescription }}
           </p>
         </div>
         <p
@@ -63,20 +75,13 @@ function setSkinsEnabled(value: boolean) {
               : 'Ikke tilgjengelig for match play.' }}
           </p>
         </div>
-        <button
-          class="relative h-7 w-12 rounded-full transition"
-          :class="skinsEnabled
-            ? 'bg-[color:var(--color-accent)]'
-            : 'bg-[color:var(--color-line)]'"
+        <Switch
+          size="lg"
+          aria-label="Skins sidegame"
+          :model-value="skinsEnabled"
           :disabled="!supportsSkins(format)"
-          :style="!supportsSkins(format) ? { opacity: 0.4 } : undefined"
-          @click="setSkinsEnabled(!skinsEnabled)"
-        >
-          <span
-            class="absolute top-0.5 h-6 w-6 rounded-full bg-white transition"
-            :style="skinsEnabled ? { left: '22px' } : { left: '2px' }"
-          />
-        </button>
+          @update:model-value="setSkinsEnabled"
+        />
       </div>
 
       <div v-if="skinsEnabled" class="mt-4 flex gap-2">

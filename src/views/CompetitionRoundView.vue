@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, toRaw, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   buildCompetitionSummary,
@@ -12,7 +12,6 @@ import {
   getStablefordPoints,
   isHoleRecorded,
   isPickedUp,
-  isTeamFormat,
   type Competition,
   type CompetitionPlayer,
   type LeaderboardEntry,
@@ -70,8 +69,6 @@ const isStableford = computed(() =>
 )
 const isScramble = computed(() => competition.value?.format === 'scramble-2')
 const isMatchPlay = computed(() => competition.value?.format === 'match-play')
-const _isTeam = computed(() => competition.value ? isTeamFormat(competition.value.format) : false)
-void _isTeam
 
 const skinsGame = computed(() => competition.value?.sideGames.find((g) => g.type === 'skins' && g.enabled))
 
@@ -172,7 +169,7 @@ function ensurePickupArrays(next: Competition) {
 async function writeScore(id: string, options: { gross?: number | null; pickedUp: boolean }) {
   const c = competition.value
   if (!c) return
-  const next: Competition = structuredClone(c)
+  const next: Competition = structuredClone(toRaw(c))
   ensurePickupArrays(next)
   const holeIndex = currentHole.value - 1
 
@@ -215,6 +212,7 @@ async function writeScore(id: string, options: { gross?: number | null; pickedUp
 async function handleCommit(gross: number) {
   if (!padTarget.value) return
   await writeScore(padTarget.value, { gross, pickedUp: false })
+  closePad()
 }
 
 async function handlePickup() {
@@ -236,7 +234,7 @@ async function finishRound() {
     const ok = confirm('Ikke alle hull er scoret. Avslutt likevel?')
     if (!ok) return
   }
-  const next: Competition = structuredClone(c)
+  const next: Competition = structuredClone(toRaw(c))
   next.status = 'completed'
   await competitionsStore.saveCompetition(next)
   router.replace(`/competitions/${c.id}/review`)

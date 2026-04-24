@@ -50,7 +50,7 @@ interface Cell {
   gross: number | null
   pickedUp: boolean
   net: number | null
-  points: number
+  points: number | null
 }
 
 interface Row {
@@ -69,6 +69,9 @@ const rows = computed<Row[]>(() => {
 
   return leaderboard.value.map((entry) => {
     const isSide = entry.entityType === 'side'
+    const sidePlayers = isSide
+      ? c.players.filter((player) => player.sideId === entry.id)
+      : []
     const grossArray = isSide
       ? c.scores.sideScores[entry.id] ?? []
       : c.scores.playerScores[entry.id] ?? []
@@ -81,12 +84,13 @@ const rows = computed<Row[]>(() => {
     let tee: string | undefined
 
     if (isSide) {
+      const referencePlayer = sidePlayers[0]
+      tee = referencePlayer?.teeSnapshot.color
       if (isScramble.value) {
         const side = c.sides.find((s) => s.id === entry.id)
-        const referencePlayer = c.players.find((p) => p.sideId === entry.id)
         const strokeIndexes = referencePlayer?.teeSnapshot.strokeIndexes ?? []
         adjustments = buildAdjustmentArray(side?.playingHandicap ?? 0, strokeIndexes)
-        tee = referencePlayer?.teeSnapshot.color
+        pars = referencePlayer?.teeSnapshot.holePars ?? pars
       }
     } else {
       const player = c.players.find((p) => p.id === entry.id)
@@ -99,19 +103,62 @@ const rows = computed<Row[]>(() => {
 
     const cells: Cell[] = []
     for (let i = 0; i < holeCount.value; i += 1) {
+      if (isSide && !isScramble.value) {
+        const allPickedUp = sidePlayers.length > 0 && sidePlayers.every((player) => isPickedUp(c.scores.playerPickups?.[player.id], i))
+        const playerHoleSummaries = sidePlayers
+          .map((player) => {
+            if (isPickedUp(c.scores.playerPickups?.[player.id], i)) {
+              return null
+            }
+
+            const gross = c.scores.playerScores[player.id]?.[i] ?? null
+            if (gross == null) {
+              return null
+            }
+
+            const adjustment = getCompetitionPlayerAdjustments(c, player)[i] ?? 0
+            const net = getNetScore(gross, adjustment)
+
+            return {
+              gross,
+              net,
+              points: getStablefordPoints(player.teeSnapshot.holePars[i], net),
+            }
+          })
+          .filter((summary): summary is { gross: number; net: number | null; points: number } => summary !== null)
+
+        if (playerHoleSummaries.length === 0) {
+          cells.push({
+            gross: null,
+            pickedUp: allPickedUp,
+            net: null,
+            points: allPickedUp ? 0 : null,
+          })
+          continue
+        }
+
+        cells.push({
+          gross: Math.min(...playerHoleSummaries.map((summary) => summary.gross)),
+          pickedUp: false,
+          net: Math.min(...playerHoleSummaries.map((summary) => summary.net ?? Number.POSITIVE_INFINITY)),
+          points: Math.max(...playerHoleSummaries.map((summary) => summary.points)),
+        })
+        continue
+      }
+
       const gross = grossArray[i] ?? null
       const pickedUp = isPickedUp(pickupArray, i)
       const par = pars[i] ?? 4
       const adj = adjustments[i] ?? 0
       const net = pickedUp ? null : getNetScore(gross, adj)
-      const points = pickedUp ? 0 : getStablefordPoints(par, net)
+      const points = pickedUp ? 0 : gross == null ? null : getStablefordPoints(par, net)
       cells.push({ gross, pickedUp, net, points })
     }
 
     return {
       id: entry.id,
       label: isSide
-        ? c.players.filter((p) => p.sideId === entry.id).map((p) => p.displayName.split(' ')[0]).join(' / ') || entry.label
+        ? sidePlayers.map((player) => player.displayName.split(' ')[0]).join(' / ') || entry.label
         : entry.label,
       cells,
       total: entry.grossTotal,
@@ -144,28 +191,56 @@ function buildAdjustmentArray(playingHandicap: number, strokeIndexes: number[]) 
 
 function sumGrossRange(row: Row, from: number, to: number) {
   let total = 0
+  let hasRecordedHole = false
   for (let i = from; i < to; i += 1) {
-    const v = row.cells[i]?.gross
-    if (v != null) total += v
+    const cell = row.cells[i]
+    if (!cell) continue
+    if (cell.gross != null) {
+      total += cell.gross
+      hasRecordedHole = true
+      continue
+    }
+    if (cell.pickedUp) {
+      hasRecordedHole = true
+    }
   }
-  return total
+  return hasRecordedHole ? total : null
 }
 
 function sumPointsRange(row: Row, from: number, to: number) {
   let total = 0
+  let hasRecordedHole = false
   for (let i = from; i < to; i += 1) {
-    total += row.cells[i]?.points ?? 0
+    const cell = row.cells[i]
+    if (!cell) continue
+    if (cell.points != null) {
+      total += cell.points
+      hasRecordedHole = true
+      continue
+    }
+    if (cell.pickedUp) {
+      hasRecordedHole = true
+    }
   }
-  return total
+  return hasRecordedHole ? total : null
 }
 
 function sumNetRange(row: Row, from: number, to: number) {
   let total = 0
+  let hasRecordedHole = false
   for (let i = from; i < to; i += 1) {
-    const v = row.cells[i]?.net
-    if (v != null) total += v
+    const cell = row.cells[i]
+    if (!cell) continue
+    if (cell.net != null) {
+      total += cell.net
+      hasRecordedHole = true
+      continue
+    }
+    if (cell.pickedUp) {
+      hasRecordedHole = true
+    }
   }
-  return total
+  return hasRecordedHole ? total : null
 }
 
 function colorForStroke(cell: Cell | undefined, par: number) {
@@ -176,12 +251,6 @@ function colorForStroke(cell: Cell | undefined, par: number) {
   if (d <= -1) return 'text-[color:var(--color-emerald)]'
   if (d >= 2) return 'text-[color:var(--color-clay)]'
   return 'text-[color:var(--color-ink)]'
-}
-
-function cellDisplay(cell: Cell | undefined) {
-  if (!cell) return '–'
-  if (cell.pickedUp) return 'PU'
-  return cell.gross ?? '–'
 }
 
 function teeDotClass(color?: string) {
@@ -220,20 +289,21 @@ const viewMode = ref<ViewMode>(isStableford.value ? 'points' : 'gross')
 function viewCellDisplay(cell: Cell | undefined) {
   if (!cell) return '–'
   if (cell.pickedUp) return 'PU'
-  if (viewMode.value === 'points') return cell.points
+  if (viewMode.value === 'points') return cell.points ?? '–'
   if (viewMode.value === 'net') return cell.net ?? '–'
   return cell.gross ?? '–'
 }
 
 function viewSumRange(row: Row, from: number, to: number) {
-  if (viewMode.value === 'points') return sumPointsRange(row, from, to) || '–'
-  if (viewMode.value === 'net') return sumNetRange(row, from, to) || '–'
-  return sumGrossRange(row, from, to) || '–'
+  if (viewMode.value === 'points') return sumPointsRange(row, from, to) ?? '–'
+  if (viewMode.value === 'net') return sumNetRange(row, from, to) ?? '–'
+  return sumGrossRange(row, from, to) ?? '–'
 }
 
 function viewCellColor(cell: Cell | undefined, par: number) {
   if (!cell || cell.pickedUp) return colorForStroke(cell, par)
   if (viewMode.value === 'points') {
+    if (cell.points == null) return 'text-[color:var(--color-ink-dim)]'
     if (cell.points >= 3) return 'text-[color:var(--color-emerald)]'
     if (cell.points === 0) return 'text-[color:var(--color-clay)]'
     return 'text-[color:var(--color-ink)]'

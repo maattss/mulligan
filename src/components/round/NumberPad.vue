@@ -19,11 +19,13 @@ const emit = defineEmits<{
 }>()
 
 const padValue = ref(props.initialScore != null ? String(props.initialScore) : '')
+const replaceOnNextDigit = ref(props.initialScore != null && !props.isPickedUp)
 
 watch(
-  () => [props.initialScore, props.hole] as const,
+  () => [props.initialScore, props.hole, props.isPickedUp] as const,
   () => {
     padValue.value = props.initialScore != null ? String(props.initialScore) : ''
+    replaceOnNextDigit.value = props.initialScore != null && !props.isPickedUp
   },
 )
 
@@ -50,6 +52,11 @@ const previewPoints = computed(() => {
   return getStablefordPoints(props.par, getNetScore(n, props.strokeAdjustment))
 })
 
+const canSubmit = computed(() => {
+  const n = parseInt(padValue.value, 10)
+  return Number.isFinite(n) && n > 0
+})
+
 const quickPicks = computed(() => {
   const par = props.par
   return [
@@ -63,39 +70,41 @@ const quickPicks = computed(() => {
 
 function selectQuick(value: number) {
   padValue.value = String(value)
-  emit('commit', value)
+  replaceOnNextDigit.value = false
 }
 
 function tapDigit(digit: string) {
-  if (padValue.value.length >= 2) {
+  if (replaceOnNextDigit.value || padValue.value.length >= 2) {
     padValue.value = digit
   } else {
     padValue.value += digit
   }
-  const n = parseInt(padValue.value, 10)
-  if (Number.isFinite(n) && n > 0) {
-    emit('commit', n)
-  }
+  replaceOnNextDigit.value = false
 }
 
 function tapDelete() {
   padValue.value = padValue.value.slice(0, -1)
-  if (padValue.value === '') {
-    emit('clear')
-  } else {
-    const n = parseInt(padValue.value, 10)
-    if (Number.isFinite(n) && n > 0) emit('commit', n)
-  }
+  replaceOnNextDigit.value = false
 }
 
 function tapPickup() {
   padValue.value = ''
+  replaceOnNextDigit.value = false
   emit('pickup')
 }
 
 function tapClear() {
   padValue.value = ''
-  emit('clear')
+  replaceOnNextDigit.value = false
+  if (props.initialScore != null || props.isPickedUp) {
+    emit('clear')
+  }
+}
+
+function commitScore() {
+  const n = parseInt(padValue.value, 10)
+  if (!Number.isFinite(n) || n <= 0) return
+  emit('commit', n)
 }
 </script>
 
@@ -134,7 +143,7 @@ function tapClear() {
             {{ padValue || (isPickedUp ? 'PU' : '–') }}
           </p>
           <p data-mono class="mt-1 text-[10px] text-[color:var(--color-ink-muted)]">
-            {{ padValue ? previewLabel : (isPickedUp ? 'Plukket opp' : 'Velg score') }}
+            {{ padValue ? previewLabel : (isPickedUp ? 'Plukket opp' : 'Velg score og lagre') }}
           </p>
         </div>
         <div class="text-right">
@@ -211,6 +220,14 @@ function tapClear() {
           @click="tapPickup"
         >
           {{ isPickedUp ? 'Plukket opp ✓' : 'Plukk opp' }}
+        </button>
+        <button
+          data-testid="pad-submit"
+          class="h-[52px] rounded-2xl bg-[color:var(--color-accent)] text-[14px] font-semibold text-[color:var(--color-bg)] transition disabled:cursor-not-allowed disabled:opacity-50"
+          :disabled="!canSubmit"
+          @click="commitScore"
+        >
+          Lagre score
         </button>
       </div>
     </div>

@@ -206,6 +206,7 @@ const FORMAT_DESCRIPTIONS: Record<CompetitionFormat, string> = {
   'scramble-2': 'Lag på 2 som slår hvert sitt tee-skudd, velger beste plassering, og fortsetter derfra til ballen er i hull.',
 }
 
+const FULL_ALLOWANCE_PERCENTAGE = 1
 export const DEFAULT_ALLOWANCE_PERCENTAGE = 0.75
 
 export function buildPercentageAllowance(percentage: number): PercentageAllowanceRule {
@@ -218,9 +219,9 @@ export function buildPercentageAllowance(percentage: number): PercentageAllowanc
 }
 
 const DEFAULT_ALLOWANCE_MAP: Record<CompetitionFormat, AllowanceRuleSnapshot> = {
-  stroke: buildPercentageAllowance(DEFAULT_ALLOWANCE_PERCENTAGE),
-  stableford: buildPercentageAllowance(DEFAULT_ALLOWANCE_PERCENTAGE),
-  'match-play': buildPercentageAllowance(DEFAULT_ALLOWANCE_PERCENTAGE),
+  stroke: buildPercentageAllowance(FULL_ALLOWANCE_PERCENTAGE),
+  stableford: buildPercentageAllowance(FULL_ALLOWANCE_PERCENTAGE),
+  'match-play': buildPercentageAllowance(FULL_ALLOWANCE_PERCENTAGE),
   'fourball-stroke': buildPercentageAllowance(DEFAULT_ALLOWANCE_PERCENTAGE),
   'fourball-stableford': buildPercentageAllowance(DEFAULT_ALLOWANCE_PERCENTAGE),
   'scramble-2': {
