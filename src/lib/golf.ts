@@ -115,6 +115,8 @@ export interface CompetitionSideGame {
 export interface CompetitionScores {
   playerScores: Record<string, NullableScore[]>
   sideScores: Record<string, NullableScore[]>
+  playerPickups?: Record<string, boolean[]>
+  sidePickups?: Record<string, boolean[]>
 }
 
 export interface Competition {
@@ -204,32 +206,24 @@ const FORMAT_DESCRIPTIONS: Record<CompetitionFormat, string> = {
   'scramble-2': 'Lag på 2 som slår hvert sitt tee-skudd, velger beste plassering, og fortsetter derfra til ballen er i hull.',
 }
 
+const FULL_ALLOWANCE_PERCENTAGE = 1
+export const DEFAULT_ALLOWANCE_PERCENTAGE = 0.75
+
+export function buildPercentageAllowance(percentage: number): PercentageAllowanceRule {
+  const rounded = Math.round(percentage * 100)
+  return {
+    kind: 'percentage',
+    percentage: rounded / 100,
+    label: `${rounded}% handicap-tildeling`,
+  }
+}
+
 const DEFAULT_ALLOWANCE_MAP: Record<CompetitionFormat, AllowanceRuleSnapshot> = {
-  stroke: {
-    kind: 'percentage',
-    percentage: 1,
-    label: '100% handicap-tildeling',
-  },
-  stableford: {
-    kind: 'percentage',
-    percentage: 1,
-    label: '100% handicap-tildeling',
-  },
-  'match-play': {
-    kind: 'percentage',
-    percentage: 1,
-    label: '100% handicap-tildeling',
-  },
-  'fourball-stroke': {
-    kind: 'percentage',
-    percentage: 0.85,
-    label: '85% handicap-tildeling',
-  },
-  'fourball-stableford': {
-    kind: 'percentage',
-    percentage: 0.85,
-    label: '85% handicap-tildeling',
-  },
+  stroke: buildPercentageAllowance(FULL_ALLOWANCE_PERCENTAGE),
+  stableford: buildPercentageAllowance(FULL_ALLOWANCE_PERCENTAGE),
+  'match-play': buildPercentageAllowance(FULL_ALLOWANCE_PERCENTAGE),
+  'fourball-stroke': buildPercentageAllowance(DEFAULT_ALLOWANCE_PERCENTAGE),
+  'fourball-stableford': buildPercentageAllowance(DEFAULT_ALLOWANCE_PERCENTAGE),
   'scramble-2': {
     kind: 'scramble-pair',
     lowPercentage: 0.35,
@@ -266,6 +260,22 @@ export function supportsSkins(format: CompetitionFormat) {
 
 export function createEmptyScoreArray(holes: number) {
   return Array.from({ length: holes }, () => null as NullableScore)
+}
+
+export function createEmptyPickupArray(holes: number) {
+  return Array.from({ length: holes }, () => false)
+}
+
+export function isPickedUp(flags: boolean[] | undefined, holeIndex: number) {
+  return flags?.[holeIndex] === true
+}
+
+export function isHoleRecorded(
+  gross: NullableScore,
+  pickups: boolean[] | undefined,
+  holeIndex: number,
+) {
+  return gross !== null || isPickedUp(pickups, holeIndex)
 }
 
 export function roundHandicap(value: number) {
@@ -441,6 +451,8 @@ export function createCompetitionFromSetup(
   const scores: CompetitionScores = {
     playerScores: Object.fromEntries(players.map((player) => [player.id, createEmptyScoreArray(setup.holes)])),
     sideScores: Object.fromEntries(sides.map((side) => [side.id, createEmptyScoreArray(setup.holes)])),
+    playerPickups: Object.fromEntries(players.map((player) => [player.id, createEmptyPickupArray(setup.holes)])),
+    sidePickups: Object.fromEntries(sides.map((side) => [side.id, createEmptyPickupArray(setup.holes)])),
   }
 
   return {
@@ -480,17 +492,32 @@ export function resolveCompleteHoles(competition: Competition) {
   const holeCount = competition.holes
 
   if (competition.format === 'scramble-2') {
-    return countCompleteEntries(Object.values(competition.scores.sideScores), holeCount)
+    return countCompleteEntries(
+      Object.entries(competition.scores.sideScores).map(([id, scores]) => ({
+        scores,
+        pickups: competition.scores.sidePickups?.[id],
+      })),
+      holeCount,
+    )
   }
 
-  return countCompleteEntries(Object.values(competition.scores.playerScores), holeCount)
+  return countCompleteEntries(
+    Object.entries(competition.scores.playerScores).map(([id, scores]) => ({
+      scores,
+      pickups: competition.scores.playerPickups?.[id],
+    })),
+    holeCount,
+  )
 }
 
-function countCompleteEntries(scoreArrays: NullableScore[][], holeCount: number) {
+function countCompleteEntries(
+  entries: { scores: NullableScore[]; pickups: boolean[] | undefined }[],
+  holeCount: number,
+) {
   let complete = 0
 
   for (let index = 0; index < holeCount; index += 1) {
-    const holeComplete = scoreArrays.every((scores) => scores[index] !== null)
+    const holeComplete = entries.every((entry) => isHoleRecorded(entry.scores[index], entry.pickups, index))
 
     if (!holeComplete) {
       break
@@ -551,12 +578,16 @@ function buildLeaderboard(competition: Competition): LeaderboardEntry[] {
 function buildIndividualEntry(competition: Competition, player: CompetitionPlayer): LeaderboardEntry {
   const adjustments = getCompetitionPlayerAdjustments(competition, player)
   const grossScores = competition.scores.playerScores[player.id] ?? createEmptyScoreArray(competition.holes)
+  const pickups = competition.scores.playerPickups?.[player.id]
   const grossTotal = sumDefined(grossScores)
   const netTotal = sumDefined(grossScores.map((grossScore, index) => getNetScore(grossScore, adjustments[index])))
   const stablefordPoints = sum(
     grossScores.map((grossScore, index) => getStablefordPoints(player.teeSnapshot.holePars[index], getNetScore(grossScore, adjustments[index]))),
   )
-  const holesPlayed = grossScores.filter((score) => score !== null).length
+  const holesPlayed = grossScores.reduce(
+    (total, score, index) => total + (isHoleRecorded(score, pickups, index) ? 1 : 0),
+    0,
+  )
   const lowestPlayingHandicap = Math.min(...competition.players.map((entry) => entry.playingHandicap))
 
   return {
@@ -582,6 +613,7 @@ function buildSideEntry(competition: Competition, side: CompetitionSide): Leader
 
   if (competition.format === 'scramble-2') {
     const sideGrossScores = competition.scores.sideScores[side.id] ?? createEmptyScoreArray(holes)
+    const sidePickups = competition.scores.sidePickups?.[side.id]
     const referenceTee = sidePlayers[0]?.teeSnapshot
     const strokeIndexes = referenceTee?.strokeIndexes ?? []
     const sideHandicap = side.playingHandicap ?? 0
@@ -589,15 +621,24 @@ function buildSideEntry(competition: Competition, side: CompetitionSide): Leader
 
     for (let index = 0; index < holes; index += 1) {
       const grossScore = sideGrossScores[index]
-      grossHoleScores.push(grossScore)
-      netHoleScores.push(getNetScore(grossScore, adjustments[index] ?? 0))
-      stablefordHolePoints.push(getStablefordPoints(referenceTee?.holePars[index] ?? 4, getNetScore(grossScore, adjustments[index] ?? 0)))
+      const pickedUp = isPickedUp(sidePickups, index)
+      grossHoleScores.push(pickedUp ? null : grossScore)
+      netHoleScores.push(pickedUp ? null : getNetScore(grossScore, adjustments[index] ?? 0))
+      stablefordHolePoints.push(
+        pickedUp
+          ? 0
+          : getStablefordPoints(referenceTee?.holePars[index] ?? 4, getNetScore(grossScore, adjustments[index] ?? 0)),
+      )
     }
   } else {
     for (let index = 0; index < holes; index += 1) {
       const playerHoleSummaries = sidePlayers
         .map((player) => {
           const scores = competition.scores.playerScores[player.id] ?? createEmptyScoreArray(holes)
+          const playerPickups = competition.scores.playerPickups?.[player.id]
+          if (isPickedUp(playerPickups, index)) {
+            return null
+          }
           const grossScore = scores[index]
           const adjustment = getCompetitionPlayerAdjustments(competition, player)[index] ?? 0
           const netScore = getNetScore(grossScore, adjustment)
@@ -608,7 +649,8 @@ function buildSideEntry(competition: Competition, side: CompetitionSide): Leader
             stablefordPoints: getStablefordPoints(player.teeSnapshot.holePars[index], netScore),
           }
         })
-        .filter((summary) => summary.grossScore !== null)
+        .filter((summary): summary is { grossScore: NullableScore; netScore: NullableScore; stablefordPoints: number } =>
+          summary !== null && summary.grossScore !== null)
 
       if (playerHoleSummaries.length === 0) {
         grossHoleScores.push(null)
@@ -653,6 +695,8 @@ function buildMatchPlayLeaderboard(competition: Competition) {
   const secondAdjustments = getCompetitionPlayerAdjustments(competition, secondPlayer)
   const firstScores = competition.scores.playerScores[firstPlayer.id] ?? createEmptyScoreArray(competition.holes)
   const secondScores = competition.scores.playerScores[secondPlayer.id] ?? createEmptyScoreArray(competition.holes)
+  const firstPickups = competition.scores.playerPickups?.[firstPlayer.id]
+  const secondPickups = competition.scores.playerPickups?.[secondPlayer.id]
 
   let firstWins = 0
   let secondWins = 0
@@ -661,14 +705,34 @@ function buildMatchPlayLeaderboard(competition: Competition) {
   let holesPlayed = 0
 
   for (let index = 0; index < competition.holes; index += 1) {
-    const firstNet = getNetScore(firstScores[index], firstAdjustments[index] ?? 0)
-    const secondNet = getNetScore(secondScores[index], secondAdjustments[index] ?? 0)
+    const firstUp = isPickedUp(firstPickups, index)
+    const secondUp = isPickedUp(secondPickups, index)
+    const firstRecorded = isHoleRecorded(firstScores[index], firstPickups, index)
+    const secondRecorded = isHoleRecorded(secondScores[index], secondPickups, index)
 
-    if (firstNet === null || secondNet === null) {
+    if (!firstRecorded || !secondRecorded) {
       break
     }
 
     holesPlayed += 1
+
+    if (firstUp && secondUp) {
+      halved += 1
+      continue
+    }
+    if (firstUp) {
+      secondWins += 1
+      balance -= 1
+      continue
+    }
+    if (secondUp) {
+      firstWins += 1
+      balance += 1
+      continue
+    }
+
+    const firstNet = getNetScore(firstScores[index], firstAdjustments[index] ?? 0) ?? 0
+    const secondNet = getNetScore(secondScores[index], secondAdjustments[index] ?? 0) ?? 0
 
     if (firstNet < secondNet) {
       firstWins += 1
@@ -723,10 +787,12 @@ function buildSkinsSummary(competition: Competition, leaderboard: LeaderboardEnt
     for (const player of competition.players) {
       const adjustments = getCompetitionPlayerAdjustments(competition, player)
       const scores = competition.scores.playerScores[player.id]
+      const pickups = competition.scores.playerPickups?.[player.id]
 
       participantMap.set(player.id, {
         label: player.displayName,
         scoreAtHole: (hole) => {
+          if (isPickedUp(pickups, hole)) return null
           const grossScore = scores?.[hole]
           return sideGame.mode === 'gross'
             ? grossScore
@@ -813,6 +879,7 @@ function buildSkinsSummary(competition: Competition, leaderboard: LeaderboardEnt
 
 function resolveSideSkinScore(competition: Competition, side: CompetitionSide, mode: SkinsMode, holeIndex: number) {
   if (competition.format === 'scramble-2') {
+    if (isPickedUp(competition.scores.sidePickups?.[side.id], holeIndex)) return null
     const sideGrossScore = competition.scores.sideScores[side.id]?.[holeIndex] ?? null
     const sideHandicap = side.playingHandicap ?? 0
     const referenceTee = competition.players.find((player) => player.sideId === side.id)?.teeSnapshot
@@ -824,6 +891,7 @@ function resolveSideSkinScore(competition: Competition, side: CompetitionSide, m
   const players = competition.players.filter((player) => player.sideId === side.id)
   const summaries = players
     .map((player) => {
+      if (isPickedUp(competition.scores.playerPickups?.[player.id], holeIndex)) return null
       const grossScore = competition.scores.playerScores[player.id]?.[holeIndex] ?? null
       const adjustment = getCompetitionPlayerAdjustments(competition, player)[holeIndex] ?? 0
       const netScore = getNetScore(grossScore, adjustment)
@@ -833,7 +901,7 @@ function resolveSideSkinScore(competition: Competition, side: CompetitionSide, m
         netScore,
       }
     })
-    .filter((entry) => entry.grossScore !== null)
+    .filter((entry): entry is { grossScore: NullableScore; netScore: NullableScore } => entry !== null && entry.grossScore !== null)
 
   if (summaries.length === 0) {
     return null

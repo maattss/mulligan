@@ -222,7 +222,11 @@ describe('format helpers', () => {
   })
 
   it('exposes per-format default allowance rules', () => {
-    expect(getDefaultAllowanceRule('fourball-stroke')).toMatchObject({ kind: 'percentage', percentage: 0.85 })
+    expect(getDefaultAllowanceRule('stroke')).toMatchObject({ kind: 'percentage', percentage: 1 })
+    expect(getDefaultAllowanceRule('stableford')).toMatchObject({ kind: 'percentage', percentage: 1 })
+    expect(getDefaultAllowanceRule('match-play')).toMatchObject({ kind: 'percentage', percentage: 1 })
+    expect(getDefaultAllowanceRule('fourball-stroke')).toMatchObject({ kind: 'percentage', percentage: 0.75 })
+    expect(getDefaultAllowanceRule('fourball-stableford')).toMatchObject({ kind: 'percentage', percentage: 0.75 })
     expect(getDefaultAllowanceRule('scramble-2')).toMatchObject({ kind: 'scramble-pair', lowPercentage: 0.35, highPercentage: 0.15 })
   })
 })

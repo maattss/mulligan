@@ -15,13 +15,18 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['mulligan.svg', 'favicon.ico', 'apple-touch-icon-180x180.png'],
+      pwaAssets: {
+        config: true,
+        injectThemeColor: false,
+      },
       manifest: {
         name: 'Mulligan',
         short_name: 'Mulligan',
         description: 'Offline-first golf scoring for local competitions.',
-        theme_color: '#0f5132',
-        background_color: '#f6f0df',
+        theme_color: '#EFEAD8',
+        background_color: '#EFEAD8',
         display: 'standalone',
+        orientation: 'portrait',
         start_url: '/',
         icons: [
           {
@@ -48,7 +53,7 @@ export default defineConfig({
         ],
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,png,ico,json}'],
+        globPatterns: ['**/*.{js,css,html,svg,png,ico,json,woff,woff2}'],
       },
     }),
   ],
