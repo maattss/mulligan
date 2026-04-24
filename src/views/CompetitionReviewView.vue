@@ -1,11 +1,14 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   buildCompetitionSummary,
   buildHoleDetails,
+  getCompetitionPlayerAdjustments,
   getFormatLabel,
-  isTeamFormat,
+  getNetScore,
+  getStablefordPoints,
+  isPickedUp,
   type Competition,
   type LeaderboardEntry,
 } from '@/lib/golf'
@@ -27,7 +30,7 @@ const isStableford = computed(() =>
   competition.value?.format === 'stableford' || competition.value?.format === 'fourball-stableford',
 )
 const isMatchPlay = computed(() => competition.value?.format === 'match-play')
-const isTeam = computed(() => competition.value ? isTeamFormat(competition.value.format) : false)
+const isScramble = computed(() => competition.value?.format === 'scramble-2')
 
 const holeDetails = computed(() => {
   const c = competition.value
@@ -43,52 +46,142 @@ const frontPar = computed(() => frontHoles.value.reduce((s, h) => s + h.par, 0))
 const backPar = computed(() => backHoles.value.reduce((s, h) => s + h.par, 0))
 const totalPar = computed(() => frontPar.value + backPar.value)
 
+interface Cell {
+  gross: number | null
+  pickedUp: boolean
+  net: number | null
+  points: number
+}
+
 interface Row {
   id: string
   label: string
-  strokes: (number | null)[]
-  pts: number
-  net: number
+  cells: Cell[]
+  total: number
+  netTotal: number
+  points: number
   tee?: string
 }
 
 const rows = computed<Row[]>(() => {
   const c = competition.value
   if (!c) return []
+
   return leaderboard.value.map((entry) => {
     const isSide = entry.entityType === 'side'
-    const strokes = isSide
+    const grossArray = isSide
       ? c.scores.sideScores[entry.id] ?? []
       : c.scores.playerScores[entry.id] ?? []
-    const player = c.players.find((p) => p.id === entry.id)
+    const pickupArray = isSide
+      ? c.scores.sidePickups?.[entry.id]
+      : c.scores.playerPickups?.[entry.id]
+
+    let adjustments: number[] = []
+    let pars: number[] = holeDetails.value.map((h) => h.par)
+    let tee: string | undefined
+
+    if (isSide) {
+      if (isScramble.value) {
+        const side = c.sides.find((s) => s.id === entry.id)
+        const referencePlayer = c.players.find((p) => p.sideId === entry.id)
+        const strokeIndexes = referencePlayer?.teeSnapshot.strokeIndexes ?? []
+        adjustments = buildAdjustmentArray(side?.playingHandicap ?? 0, strokeIndexes)
+        tee = referencePlayer?.teeSnapshot.color
+      }
+    } else {
+      const player = c.players.find((p) => p.id === entry.id)
+      if (player) {
+        adjustments = getCompetitionPlayerAdjustments(c, player)
+        pars = player.teeSnapshot.holePars
+        tee = player.teeSnapshot.color
+      }
+    }
+
+    const cells: Cell[] = []
+    for (let i = 0; i < holeCount.value; i += 1) {
+      const gross = grossArray[i] ?? null
+      const pickedUp = isPickedUp(pickupArray, i)
+      const par = pars[i] ?? 4
+      const adj = adjustments[i] ?? 0
+      const net = pickedUp ? null : getNetScore(gross, adj)
+      const points = pickedUp ? 0 : getStablefordPoints(par, net)
+      cells.push({ gross, pickedUp, net, points })
+    }
+
     return {
       id: entry.id,
       label: isSide
         ? c.players.filter((p) => p.sideId === entry.id).map((p) => p.displayName.split(' ')[0]).join(' / ') || entry.label
         : entry.label,
-      strokes: Array.from({ length: holeCount.value }, (_, i) => strokes[i] ?? null),
-      pts: entry.stablefordPoints,
-      net: entry.netTotal,
-      tee: player?.teeSnapshot.color,
+      cells,
+      total: entry.grossTotal,
+      netTotal: entry.netTotal,
+      points: entry.stablefordPoints,
+      tee,
     }
   })
 })
 
-function sumRange(row: Row, from: number, to: number) {
+function buildAdjustmentArray(playingHandicap: number, strokeIndexes: number[]) {
+  if (strokeIndexes.length === 0) return []
+  const adjustments = Array.from({ length: strokeIndexes.length }, () => 0)
+  if (playingHandicap === 0) return adjustments
+  const isPlus = playingHandicap < 0
+  const absolute = Math.abs(playingHandicap)
+  const fullRounds = Math.floor(absolute / strokeIndexes.length)
+  const remainder = absolute % strokeIndexes.length
+  for (let i = 0; i < adjustments.length; i += 1) {
+    adjustments[i] = isPlus ? -fullRounds : fullRounds
+  }
+  if (remainder === 0) return adjustments
+  for (let i = 0; i < strokeIndexes.length; i += 1) {
+    const si = strokeIndexes[i]
+    const extra = isPlus ? si > strokeIndexes.length - remainder : si <= remainder
+    if (extra) adjustments[i] += isPlus ? -1 : 1
+  }
+  return adjustments
+}
+
+function sumGrossRange(row: Row, from: number, to: number) {
   let total = 0
-  for (let i = from; i < to; i++) {
-    const v = row.strokes[i]
+  for (let i = from; i < to; i += 1) {
+    const v = row.cells[i]?.gross
     if (v != null) total += v
   }
   return total
 }
 
-function colorForStroke(stroke: number | null, par: number) {
-  if (stroke == null) return 'text-[color:var(--color-ink-dim)]'
-  const d = stroke - par
+function sumPointsRange(row: Row, from: number, to: number) {
+  let total = 0
+  for (let i = from; i < to; i += 1) {
+    total += row.cells[i]?.points ?? 0
+  }
+  return total
+}
+
+function sumNetRange(row: Row, from: number, to: number) {
+  let total = 0
+  for (let i = from; i < to; i += 1) {
+    const v = row.cells[i]?.net
+    if (v != null) total += v
+  }
+  return total
+}
+
+function colorForStroke(cell: Cell | undefined, par: number) {
+  if (!cell) return 'text-[color:var(--color-ink-dim)]'
+  if (cell.pickedUp) return 'text-[color:var(--color-clay)]'
+  if (cell.gross == null) return 'text-[color:var(--color-ink-dim)]'
+  const d = cell.gross - par
   if (d <= -1) return 'text-[color:var(--color-emerald)]'
   if (d >= 2) return 'text-[color:var(--color-clay)]'
   return 'text-[color:var(--color-ink)]'
+}
+
+function cellDisplay(cell: Cell | undefined) {
+  if (!cell) return '–'
+  if (cell.pickedUp) return 'PU'
+  return cell.gross ?? '–'
 }
 
 function teeDotClass(color?: string) {
@@ -121,29 +214,54 @@ function metricLabel() {
   return isStableford.value ? 'pts' : 'netto'
 }
 
-function exportText() {
-  const c = competition.value
-  if (!c) return
-  const lines = [
-    `${c.name}`,
-    `${formatDate(c.date)} · ${c.courseSnapshot.clubName} · ${getFormatLabel(c.format)}`,
-    '',
-    'Resultater',
-    ...leaderboard.value.map((e, i) => `${i + 1}. ${e.label} — ${metricValue(e)} ${metricLabel()}`.trim()),
-  ]
-  const text = lines.join('\n')
-  if (navigator.share) {
-    navigator.share({ title: c.name, text }).catch(() => copyText(text))
-  } else {
-    copyText(text)
-  }
+type ViewMode = 'gross' | 'net' | 'points'
+const viewMode = ref<ViewMode>(isStableford.value ? 'points' : 'gross')
+
+function viewCellDisplay(cell: Cell | undefined) {
+  if (!cell) return '–'
+  if (cell.pickedUp) return 'PU'
+  if (viewMode.value === 'points') return cell.points
+  if (viewMode.value === 'net') return cell.net ?? '–'
+  return cell.gross ?? '–'
 }
 
-function copyText(text: string) {
-  if (navigator.clipboard) {
-    navigator.clipboard.writeText(text).catch(() => {})
-  }
+function viewSumRange(row: Row, from: number, to: number) {
+  if (viewMode.value === 'points') return sumPointsRange(row, from, to) || '–'
+  if (viewMode.value === 'net') return sumNetRange(row, from, to) || '–'
+  return sumGrossRange(row, from, to) || '–'
 }
+
+function viewCellColor(cell: Cell | undefined, par: number) {
+  if (!cell || cell.pickedUp) return colorForStroke(cell, par)
+  if (viewMode.value === 'points') {
+    if (cell.points >= 3) return 'text-[color:var(--color-emerald)]'
+    if (cell.points === 0) return 'text-[color:var(--color-clay)]'
+    return 'text-[color:var(--color-ink)]'
+  }
+  if (viewMode.value === 'net') {
+    if (cell.net == null) return 'text-[color:var(--color-ink-dim)]'
+    const d = cell.net - par
+    if (d <= -1) return 'text-[color:var(--color-emerald)]'
+    if (d >= 2) return 'text-[color:var(--color-clay)]'
+    return 'text-[color:var(--color-ink)]'
+  }
+  return colorForStroke(cell, par)
+}
+
+const skinsHoles = computed(() => summary.value?.skins?.holes ?? [])
+const skinsMode = computed(() => summary.value?.skins?.mode)
+const skinsTotals = computed(() => summary.value?.skins?.totalSkins ?? {})
+const skinsParticipants = computed(() => {
+  const c = competition.value
+  if (!c || !summary.value?.skins) return [] as { id: string, label: string }[]
+  if (c.format === 'scramble-2' || c.format === 'fourball-stroke' || c.format === 'fourball-stableford') {
+    return c.sides.map((s) => ({
+      id: s.id,
+      label: c.players.filter((p) => p.sideId === s.id).map((p) => p.displayName.split(' ')[0]).join(' / ') || s.name,
+    }))
+  }
+  return c.players.map((p) => ({ id: p.id, label: p.displayName }))
+})
 </script>
 
 <template>
@@ -157,12 +275,6 @@ function copyText(text: string) {
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
           <path d="M10 3L5 8l5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
         </svg>
-      </button>
-      <button
-        class="rounded-2xl border border-[color:var(--color-line)] bg-[color:var(--color-surface)] px-3.5 py-1.5 text-[13px] font-medium text-[color:var(--color-ink)]"
-        @click="exportText"
-      >
-        Del
       </button>
     </header>
 
@@ -227,7 +339,24 @@ function copyText(text: string) {
     </section>
 
     <section class="px-5 pt-[22px] pb-2">
-      <p data-mono class="pb-2 text-[10px] text-[color:var(--color-ink-muted)]">Scorekort</p>
+      <div class="flex items-center justify-between pb-2">
+        <p data-mono class="text-[10px] text-[color:var(--color-ink-muted)]">Scorekort</p>
+        <div class="flex gap-1">
+          <button
+            v-for="m in [
+              { id: 'gross' as ViewMode, label: 'Slag' },
+              { id: 'net' as ViewMode, label: 'Netto' },
+              { id: 'points' as ViewMode, label: 'Poeng' },
+            ]"
+            :key="m.id"
+            class="rounded-full border px-2.5 py-1 text-[11px] font-medium transition"
+            :class="viewMode === m.id
+              ? 'border-[color:var(--color-accent)] bg-[color:var(--color-accent)] text-[color:var(--color-bg)]'
+              : 'border-[color:var(--color-line)] bg-[color:var(--color-surface)] text-[color:var(--color-ink-soft)]'"
+            @click="viewMode = m.id"
+          >{{ m.label }}</button>
+        </div>
+      </div>
       <div class="overflow-hidden rounded-[16px] border border-[color:var(--color-line)] bg-[color:var(--color-surface)]">
         <div class="overflow-x-auto">
           <table class="w-full min-w-[680px] border-collapse">
@@ -283,33 +412,78 @@ function copyText(text: string) {
                   {{ row.label.split(' ')[0] }}
                 </td>
                 <td
-                  v-for="(s, i) in row.strokes.slice(0, frontHoles.length)"
+                  v-for="(h, i) in frontHoles"
                   :key="'f' + i"
                   class="px-1 py-2 text-center text-[13px]"
-                  :class="colorForStroke(s, frontHoles[i].par)"
+                  :class="viewCellColor(row.cells[i], h.par)"
                   data-num
-                >{{ s ?? '–' }}</td>
+                >{{ viewCellDisplay(row.cells[i]) }}</td>
                 <td class="border-l border-[color:var(--color-line)] bg-[color:var(--color-surface-alt)] px-1 py-2 text-center text-[13px] font-medium text-[color:var(--color-ink)]" data-num>
-                  {{ sumRange(row, 0, frontHoles.length) || '–' }}
+                  {{ viewSumRange(row, 0, frontHoles.length) }}
                 </td>
                 <template v-if="backHoles.length">
                   <td
-                    v-for="(s, i) in row.strokes.slice(9, 9 + backHoles.length)"
+                    v-for="(h, i) in backHoles"
                     :key="'b' + i"
                     class="px-1 py-2 text-center text-[13px]"
-                    :class="colorForStroke(s, backHoles[i].par)"
+                    :class="viewCellColor(row.cells[9 + i], h.par)"
                     data-num
-                  >{{ s ?? '–' }}</td>
+                  >{{ viewCellDisplay(row.cells[9 + i]) }}</td>
                   <td class="border-l border-[color:var(--color-line)] bg-[color:var(--color-surface-alt)] px-1 py-2 text-center text-[13px] font-medium text-[color:var(--color-ink)]" data-num>
-                    {{ sumRange(row, 9, 9 + backHoles.length) || '–' }}
+                    {{ viewSumRange(row, 9, 9 + backHoles.length) }}
                   </td>
                 </template>
                 <td class="border-l border-[color:var(--color-line)] bg-[color:var(--color-surface-alt)] px-1 py-2 text-center text-[13px] font-semibold text-[color:var(--color-ink)]" data-num>
-                  {{ sumRange(row, 0, holeCount) || '–' }}
+                  {{ viewSumRange(row, 0, holeCount) }}
                 </td>
               </tr>
             </tbody>
           </table>
+        </div>
+      </div>
+    </section>
+
+    <section v-if="summary?.skins" class="px-5 pt-[22px] pb-2">
+      <div class="flex items-center justify-between pb-2">
+        <p data-mono class="text-[10px] text-[color:var(--color-ink-muted)]">
+          Skins · {{ skinsMode }}
+        </p>
+        <p data-mono class="text-[10px] text-[color:var(--color-ink-muted)]">
+          {{ skinsHoles.filter((h) => h.winnerId).length }} avgjort
+        </p>
+      </div>
+      <div class="overflow-hidden rounded-[16px] border border-[color:var(--color-line)] bg-[color:var(--color-surface)]">
+        <div
+          v-for="participant in skinsParticipants"
+          :key="participant.id"
+          class="flex items-center justify-between border-b border-[color:var(--color-line-soft)] px-4 py-2.5 last:border-b-0"
+        >
+          <span class="text-sm font-medium text-[color:var(--color-ink)]">{{ participant.label }}</span>
+          <span data-num class="text-[18px] font-semibold tracking-[-0.02em]">
+            {{ skinsTotals[participant.id] ?? 0 }}
+            <span data-mono class="ml-0.5 text-[10px] font-normal text-[color:var(--color-ink-muted)]">skins</span>
+          </span>
+        </div>
+      </div>
+
+      <div class="mt-3 overflow-hidden rounded-[16px] border border-[color:var(--color-line)] bg-[color:var(--color-surface)]">
+        <div class="flex items-center gap-3 border-b border-[color:var(--color-line-soft)] px-4 py-2">
+          <span data-mono class="w-8 text-[10px] text-[color:var(--color-ink-muted)]">Hull</span>
+          <span data-mono class="flex-1 text-[10px] text-[color:var(--color-ink-muted)]">Vinner</span>
+          <span data-mono class="text-[10px] text-[color:var(--color-ink-muted)]">Skins</span>
+        </div>
+        <div
+          v-for="h in skinsHoles"
+          :key="h.hole"
+          class="flex items-center gap-3 border-b border-[color:var(--color-line-soft)] px-4 py-2 last:border-b-0"
+        >
+          <span data-num class="w-8 text-[13px] font-medium">{{ h.hole }}</span>
+          <span class="flex-1 truncate text-[13px]" :class="h.winnerId ? 'text-[color:var(--color-ink)]' : 'text-[color:var(--color-ink-muted)] italic'">
+            {{ h.winnerId ? h.winnerLabel : (h.winningScore != null ? `Delt (${h.winningScore})` : '—') }}
+          </span>
+          <span data-num class="text-[13px] font-semibold"
+            :class="h.winnerId ? 'text-[color:var(--color-gold)]' : 'text-[color:var(--color-ink-muted)]'"
+          >{{ h.winnerId ? h.carryValue : (h.carryValue > 1 ? `+${h.carryValue - 1}` : '—') }}</span>
         </div>
       </div>
     </section>

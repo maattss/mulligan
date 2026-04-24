@@ -222,7 +222,7 @@ describe('format helpers', () => {
   })
 
   it('exposes per-format default allowance rules', () => {
-    expect(getDefaultAllowanceRule('fourball-stroke')).toMatchObject({ kind: 'percentage', percentage: 0.85 })
+    expect(getDefaultAllowanceRule('fourball-stroke')).toMatchObject({ kind: 'percentage', percentage: 0.75 })
     expect(getDefaultAllowanceRule('scramble-2')).toMatchObject({ kind: 'scramble-pair', lowPercentage: 0.35, highPercentage: 0.15 })
   })
 })
