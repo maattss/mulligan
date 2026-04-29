@@ -222,7 +222,11 @@ describe('format helpers', () => {
   })
 
   it('exposes per-format default allowance rules', () => {
-    expect(getDefaultAllowanceRule('fourball-stroke')).toMatchObject({ kind: 'percentage', percentage: 0.85 })
+    expect(getDefaultAllowanceRule('stroke')).toMatchObject({ kind: 'percentage', percentage: 1 })
+    expect(getDefaultAllowanceRule('stableford')).toMatchObject({ kind: 'percentage', percentage: 1 })
+    expect(getDefaultAllowanceRule('match-play')).toMatchObject({ kind: 'percentage', percentage: 1 })
+    expect(getDefaultAllowanceRule('fourball-stroke')).toMatchObject({ kind: 'percentage', percentage: 0.75 })
+    expect(getDefaultAllowanceRule('fourball-stableford')).toMatchObject({ kind: 'percentage', percentage: 0.75 })
     expect(getDefaultAllowanceRule('scramble-2')).toMatchObject({ kind: 'scramble-pair', lowPercentage: 0.35, highPercentage: 0.15 })
   })
 })
@@ -424,6 +428,135 @@ describe('skins side game', () => {
     const summary = buildCompetitionSummary(competition)
     expect(summary.skins).not.toBeNull()
     expect(summary.skins?.holes[0]).toMatchObject({ winnerLabel: 'Alice', carryValue: 1 })
+  })
+})
+
+describe('pickup scoring', () => {
+  const profiles: PlayerProfile[] = [
+    { id: 'p1', name: 'Alice', handicapIndex: 5 },
+    { id: 'p2', name: 'Bob', handicapIndex: 14 },
+  ]
+
+  function setupForFormat(format: CompetitionSetupInput['format']): CompetitionSetupInput {
+    return {
+      name: `${format} pickup`,
+      date: '2026-04-17',
+      holes: 18,
+      format,
+      courseId: demoCourse.id,
+      players: profiles.map((profile) => ({ playerId: profile.id, teeId: blackTee.id })),
+      sideGames: [],
+    }
+  }
+
+  it('seeds empty pickup arrays alongside score arrays', () => {
+    const competition = createCompetitionFromSetup(setupForFormat('stroke'), profiles, demoCourse)
+    expect(competition.scores.playerPickups?.[competition.players[0].id]).toEqual(Array(18).fill(false))
+  })
+
+  it('counts a picked-up hole as played for stableford and awards 0 points', () => {
+    const baseline = createCompetitionFromSetup(setupForFormat('stableford'), profiles, demoCourse)
+    baseline.scores.playerScores[baseline.players[0].id] = par72Scores(0)
+    const baselineSummary = buildCompetitionSummary(baseline)
+    const aliceBaselinePoints = baselineSummary.leaderboard.find((entry) => entry.id === baseline.players[0].id)?.stablefordPoints ?? 0
+
+    const competition = createCompetitionFromSetup(setupForFormat('stableford'), profiles, demoCourse)
+    competition.scores.playerScores[competition.players[0].id] = par72Scores(0)
+    const aliceId = competition.players[0].id
+    competition.scores.playerPickups = {
+      [aliceId]: Array(18).fill(false),
+      [competition.players[1].id]: Array(18).fill(false),
+    }
+    competition.scores.playerPickups[aliceId][3] = true
+    competition.scores.playerScores[aliceId][3] = null
+    const summary = buildCompetitionSummary(competition)
+    const aliceEntry = summary.leaderboard.find((entry) => entry.id === aliceId)
+    expect(aliceEntry?.holesPlayed).toBe(18)
+    expect(aliceEntry?.stablefordPoints).toBeLessThan(aliceBaselinePoints)
+  })
+
+  it('treats a single pickup as a hole loss in match play', () => {
+    const competition = createCompetitionFromSetup(setupForFormat('match-play'), profiles, demoCourse)
+    const [first, second] = competition.players
+    competition.scores.playerScores[first.id] = par72Scores(0)
+    competition.scores.playerScores[second.id] = par72Scores(0)
+    competition.scores.playerPickups = {
+      [first.id]: Array(18).fill(false),
+      [second.id]: Array(18).fill(false),
+    }
+    competition.scores.playerPickups[first.id][0] = true
+    competition.scores.playerScores[first.id][0] = null
+    const summary = buildCompetitionSummary(competition)
+    const second2 = summary.leaderboard.find((entry) => entry.id === second.id)
+    const first2 = summary.leaderboard.find((entry) => entry.id === first.id)
+    expect(second2?.stablefordPoints).toBeGreaterThan(first2?.stablefordPoints ?? 0)
+  })
+
+  it('excludes a picked-up player from skins so the hole carries over', () => {
+    const setup: CompetitionSetupInput = {
+      ...setupForFormat('stroke'),
+      sideGames: [{ id: 'sg1', type: 'skins', enabled: true, mode: 'gross' }],
+    }
+    const competition = createCompetitionFromSetup(setup, profiles, demoCourse)
+    const [first, second] = competition.players
+    competition.scores.playerScores[first.id] = par72Scores(0)
+    competition.scores.playerScores[second.id] = par72Scores(0)
+    competition.scores.playerPickups = {
+      [first.id]: Array(18).fill(false),
+      [second.id]: Array(18).fill(false),
+    }
+    competition.scores.playerPickups[first.id][0] = true
+    competition.scores.playerScores[first.id][0] = null
+    const summary = buildCompetitionSummary(competition)
+    expect(summary.skins?.holes[0]).toMatchObject({ winnerLabel: null, winningScore: null, carryValue: 1 })
+    expect(summary.skins?.holes[1].carryValue).toBe(2)
+  })
+
+  it('drops a picked-up player from fourball best ball', () => {
+    const setup: CompetitionSetupInput = {
+      ...setupForFormat('fourball-stroke'),
+      players: [
+        { playerId: 'p1', teeId: blackTee.id, sideId: 'side-1' },
+        { playerId: 'p2', teeId: blackTee.id, sideId: 'side-1' },
+      ],
+    }
+    const competition = createCompetitionFromSetup(setup, profiles, demoCourse)
+    const [first, second] = competition.players
+    competition.scores.playerScores[first.id] = par72Scores(0)
+    competition.scores.playerScores[second.id] = par72Scores(2)
+    competition.scores.playerPickups = {
+      [first.id]: Array(18).fill(false),
+      [second.id]: Array(18).fill(false),
+    }
+    competition.scores.playerPickups[first.id][0] = true
+    competition.scores.playerScores[first.id][0] = null
+    const summary = buildCompetitionSummary(competition)
+    const sideEntry = summary.leaderboard[0]
+    const bobHole0Gross = par72Scores(2)[0]
+    expect(sideEntry.grossTotal).toBe(par72Scores(0).slice(1).reduce((total, value) => total + value, 0) + bobHole0Gross)
+  })
+
+  it('makes a scramble-2 picked-up side score 0 for that hole', () => {
+    const setup: CompetitionSetupInput = {
+      ...setupForFormat('scramble-2'),
+      players: [
+        { playerId: 'p1', teeId: blackTee.id, sideId: 'side-1' },
+        { playerId: 'p2', teeId: blackTee.id, sideId: 'side-2' },
+      ],
+    }
+    const competition = createCompetitionFromSetup(setup, profiles, demoCourse)
+    competition.scores.sideScores[competition.sides[0].id] = par72Scores(0)
+    competition.scores.sideScores[competition.sides[1].id] = par72Scores(0)
+    competition.scores.sidePickups = {
+      [competition.sides[0].id]: Array(18).fill(false),
+      [competition.sides[1].id]: Array(18).fill(false),
+    }
+    competition.scores.sidePickups[competition.sides[0].id][0] = true
+    competition.scores.sideScores[competition.sides[0].id][0] = null
+    const summary = buildCompetitionSummary(competition)
+    const sideEntry = summary.leaderboard.find((entry) => entry.id === competition.sides[0].id)
+    expect(sideEntry?.holesPlayed).toBe(18)
+    expect(sideEntry?.grossTotal).toBe(par72Scores(0).slice(1).reduce((total, value) => total + value, 0))
   })
 })
 

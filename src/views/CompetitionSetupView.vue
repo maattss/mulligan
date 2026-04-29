@@ -4,21 +4,24 @@ import { useRouter } from 'vue-router'
 import { toast } from 'vue-sonner'
 import { getCourseById, getCourses } from '@/lib/course-catalog'
 import {
-  COMPETITION_FORMATS,
+  buildPercentageAllowance,
   createCompetitionFromSetup,
   getDefaultAllowanceRule,
-  getFormatDescription,
-  getFormatLabel,
   isTeamFormat,
   supportsSkins,
+  type AllowanceRuleSnapshot,
   type CompetitionFormat,
   type CompetitionSideGame,
-  type PlayerProfile,
   type SkinsMode,
 } from '@/lib/golf'
 import { useCompetitionsStore } from '@/stores/competitions'
 import { usePlayersStore } from '@/stores/players'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import StepFormat from '@/components/setup/StepFormat.vue'
+import StepCourse from '@/components/setup/StepCourse.vue'
+import StepPlayers from '@/components/setup/StepPlayers.vue'
+import StepOptions from '@/components/setup/StepOptions.vue'
+import StepReview from '@/components/setup/StepReview.vue'
+import type { PlayerSelection } from '@/components/setup/shared'
 
 const router = useRouter()
 const playersStore = usePlayersStore()
@@ -26,8 +29,14 @@ const competitionsStore = useCompetitionsStore()
 const courses = getCourses()
 
 const STEPS = ['Format', 'Bane', 'Spillere', 'Valg', 'Start'] as const
+const ALLOWANCE_PRESETS = [0, 0.5, 0.75, 0.85, 0.9, 1] as const
 
 const step = ref(0)
+
+function getDefaultPercentage(format: CompetitionFormat) {
+  const rule = getDefaultAllowanceRule(format)
+  return rule.kind === 'percentage' ? rule.percentage : 1
+}
 
 const form = reactive({
   name: defaultName(),
@@ -37,16 +46,10 @@ const form = reactive({
   courseId: courses[0]?.id ?? '',
   skinsEnabled: false,
   skinsMode: 'net' as SkinsMode,
+  allowancePercentage: getDefaultPercentage('stableford'),
 })
 
-type Selection = { selected: boolean; teeId: string; sideId: string }
-const selections = reactive<Record<string, Selection>>({})
-
-const newPlayerOpen = ref(false)
-const newPlayer = reactive({ name: '', handicapIndex: 18.4 })
-
-const editingPlayerId = ref<string | null>(null)
-const editDraft = reactive({ name: '', handicapIndex: 0 })
+const selections = reactive<Record<string, PlayerSelection>>({})
 
 const selectedCourse = computed(() => getCourseById(form.courseId))
 const selectedPlayers = computed(() =>
@@ -54,6 +57,14 @@ const selectedPlayers = computed(() =>
 )
 const isTeamCompetition = computed(() => isTeamFormat(form.format))
 const requiresPair = computed(() => form.format === 'match-play')
+const allowanceIsPercentage = computed(() => form.format !== 'scramble-2')
+
+const allowanceRule = computed<AllowanceRuleSnapshot>(() => {
+  if (!allowanceIsPercentage.value) {
+    return getDefaultAllowanceRule(form.format)
+  }
+  return buildPercentageAllowance(form.allowancePercentage)
+})
 
 watch(
   () => [playersStore.sortedPlayers, selectedCourse.value?.id] as const,
@@ -73,6 +84,7 @@ watch(
   () => form.format,
   (format) => {
     if (!supportsSkins(format)) form.skinsEnabled = false
+    form.allowancePercentage = getDefaultPercentage(format)
     autoAssignSides()
   },
   { immediate: true },
@@ -145,60 +157,8 @@ function togglePlayer(id: string) {
   selections[id].selected = !selections[id].selected
 }
 
-function startEditPlayer(player: PlayerProfile) {
-  editingPlayerId.value = player.id
-  editDraft.name = player.name
-  editDraft.handicapIndex = player.handicapIndex
-  newPlayerOpen.value = false
-}
-
-function cancelEditPlayer() {
-  editingPlayerId.value = null
-}
-
-async function saveEditPlayer() {
-  if (!editingPlayerId.value) return
-  if (!editDraft.name.trim()) {
-    toast.error('Skriv inn et navn.')
-    return
-  }
-  await playersStore.savePlayer({
-    id: editingPlayerId.value,
-    name: editDraft.name,
-    handicapIndex: Number(editDraft.handicapIndex),
-  })
-  editingPlayerId.value = null
-  toast.success('Spiller oppdatert.')
-}
-
-async function deleteEditPlayer() {
-  if (!editingPlayerId.value) return
-  const player = playersStore.sortedPlayers.find((p) => p.id === editingPlayerId.value)
-  const confirmed = window.confirm(
-    player ? `Slette ${player.name}?` : 'Slette spiller?',
-  )
-  if (!confirmed) return
-  const id = editingPlayerId.value
-  await playersStore.deletePlayer(id)
+function removeSelection(id: string) {
   delete selections[id]
-  editingPlayerId.value = null
-  toast.success('Spiller slettet.')
-}
-
-async function addInlinePlayer() {
-  if (!newPlayer.name.trim()) {
-    toast.error('Skriv inn et navn.')
-    return
-  }
-  const saved = await playersStore.savePlayer({
-    name: newPlayer.name,
-    handicapIndex: Number(newPlayer.handicapIndex),
-  })
-  const defaultTeeId = selectedCourse.value?.tees[0]?.id ?? ''
-  selections[saved.id] = { selected: true, teeId: defaultTeeId, sideId: 'side-1' }
-  newPlayer.name = ''
-  newPlayer.handicapIndex = 18.4
-  newPlayerOpen.value = false
 }
 
 async function startRound() {
@@ -209,7 +169,6 @@ async function startRound() {
   const course = selectedCourse.value
   if (!course) return
 
-  const allowanceRule = getDefaultAllowanceRule(form.format)
   const sideGames: CompetitionSideGame[] = form.skinsEnabled
     ? [{ id: crypto.randomUUID(), type: 'skins', enabled: true, mode: form.skinsMode }]
     : []
@@ -227,7 +186,7 @@ async function startRound() {
         sideId: isTeamCompetition.value ? selections[p.id].sideId : undefined,
       })),
       sideGames,
-      allowanceRule,
+      allowanceRule: allowanceRule.value,
     },
     playersStore.sortedPlayers,
     course,
@@ -241,7 +200,9 @@ async function startRound() {
 function autoAssignSides() {
   if (!isTeamCompetition.value) return
   selectedPlayers.value.forEach((p, i) => {
-    selections[p.id].sideId = `side-${Math.floor(i / 2) + 1}`
+    if (selections[p.id]) {
+      selections[p.id].sideId = `side-${Math.floor(i / 2) + 1}`
+    }
   })
 }
 
@@ -250,34 +211,6 @@ function defaultName() {
   const weekday = d.toLocaleDateString('nb-NO', { weekday: 'long' })
   const date = d.toLocaleDateString('nb-NO', { day: 'numeric', month: 'short' }).replace('.', '')
   return `${weekday.charAt(0).toUpperCase()}${weekday.slice(1)}srunde · ${date}`
-}
-
-function teeDotClass(color: string) {
-  switch (color) {
-    case 'red':
-      return 'bg-[color:var(--color-tee-red)]'
-    case 'yellow':
-      return 'bg-[color:var(--color-tee-yellow)]'
-    case 'orange':
-      return 'bg-[color:var(--color-tee-orange)]'
-    case 'blue':
-      return 'bg-[color:var(--color-tee-blue)]'
-    case 'black':
-      return 'bg-[color:var(--color-ink)]'
-    case 'white':
-      return 'bg-[color:var(--color-tee-white)] border border-[color:var(--color-line)]'
-    default:
-      return 'bg-[color:var(--color-tee-green)]'
-  }
-}
-
-function initials(name: string) {
-  return name
-    .split(' ')
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() ?? '')
-    .join('')
 }
 </script>
 
@@ -309,344 +242,53 @@ function initials(name: string) {
         {{ STEPS[step] }}
       </h2>
 
-      <!-- Step 0: Format -->
-      <div v-if="step === 0" class="mt-6">
-        <label class="block">
-          <span data-mono class="text-[10px] text-[color:var(--color-ink-muted)]">Navn</span>
-          <input
-            v-model="form.name"
-            class="mt-1.5 w-full rounded-2xl border border-[color:var(--color-line)] bg-[color:var(--color-surface)] px-4 py-3 text-[15px] outline-none focus:border-[color:var(--color-accent)]"
-          />
-        </label>
+      <StepFormat
+        v-if="step === 0"
+        v-model:name="form.name"
+        v-model:format="form.format"
+        v-model:holes="form.holes"
+      />
 
-        <p data-mono class="mt-5 text-[10px] text-[color:var(--color-ink-muted)]">Format</p>
-        <div class="mt-2 grid grid-cols-2 gap-2">
-          <div
-            v-for="f in COMPETITION_FORMATS"
-            :key="f"
-            class="relative rounded-2xl border transition"
-            :class="form.format === f
-              ? 'border-[color:var(--color-accent)] bg-[color:var(--color-accent)] text-[color:var(--color-bg)]'
-              : 'border-[color:var(--color-line)] bg-[color:var(--color-surface)] text-[color:var(--color-ink)]'"
-          >
-            <button
-              class="w-full px-3 py-3 pr-8 text-left text-[13px]"
-              @click="form.format = f"
-            >
-              {{ getFormatLabel(f) }}
-            </button>
-            <Popover>
-              <PopoverTrigger
-                :aria-label="`Info om ${getFormatLabel(f)}`"
-                class="absolute top-1.5 right-1.5 flex h-6 w-6 items-center justify-center rounded-full border transition"
-                :class="form.format === f
-                  ? 'border-[color:var(--color-bg)]/30 text-[color:var(--color-bg)]'
-                  : 'border-[color:var(--color-line)] text-[color:var(--color-ink-soft)]'"
-                @click.stop
-              >
-                <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                  <circle cx="5" cy="5" r="4.25" stroke="currentColor" stroke-width="1" />
-                  <path d="M5 4.2v2.4M5 3.1v.05" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" />
-                </svg>
-              </PopoverTrigger>
-              <PopoverContent :side-offset="8" align="end" class="w-[260px]">
-                <p class="text-[13px] font-semibold tracking-tight text-[color:var(--color-ink)]">
-                  {{ getFormatLabel(f) }}
-                </p>
-                <p class="mt-1.5 text-[12px] leading-relaxed text-[color:var(--color-ink-soft)]">
-                  {{ getFormatDescription(f) }}
-                </p>
-              </PopoverContent>
-            </Popover>
-          </div>
-        </div>
+      <StepCourse
+        v-else-if="step === 1"
+        v-model:course-id="form.courseId"
+        :courses="courses"
+        :selected-course="selectedCourse"
+      />
 
-        <p data-mono class="mt-5 text-[10px] text-[color:var(--color-ink-muted)]">Hull</p>
-        <div class="mt-2 flex gap-2">
-          <button
-            v-for="n in [9, 18] as const"
-            :key="n"
-            class="flex-1 rounded-full border py-2.5 text-sm font-medium transition"
-            :class="form.holes === n
-              ? 'border-[color:var(--color-accent)] bg-[color:var(--color-accent)] text-[color:var(--color-bg)]'
-              : 'border-[color:var(--color-line)] bg-[color:var(--color-surface)] text-[color:var(--color-ink)]'"
-            @click="form.holes = n"
-          >
-            {{ n }} hull
-          </button>
-        </div>
-      </div>
+      <StepPlayers
+        v-else-if="step === 2"
+        :players="playersStore.sortedPlayers"
+        :selected-course="selectedCourse"
+        :selections="selections"
+        :is-team-competition="isTeamCompetition"
+        @toggle="togglePlayer"
+        @selection-removed="removeSelection"
+      />
 
-      <!-- Step 1: Course -->
-      <div v-if="step === 1" class="mt-6">
-        <p class="text-sm text-[color:var(--color-ink-soft)]">Velg en lokal bane fra katalogen.</p>
-        <div class="mt-3 overflow-hidden rounded-2xl border border-[color:var(--color-line)] bg-[color:var(--color-surface)]">
-          <button
-            v-for="course in courses"
-            :key="course.id"
-            class="flex w-full items-center justify-between border-b border-[color:var(--color-line-soft)] px-4 py-3.5 text-left last:border-b-0"
-            @click="form.courseId = course.id"
-          >
-            <div class="min-w-0">
-              <p class="text-[15px] font-semibold tracking-tight text-[color:var(--color-ink)]">{{ course.clubName }}</p>
-              <p class="mt-0.5 text-xs text-[color:var(--color-ink-soft)]">{{ course.courseName }} · {{ course.city }}</p>
-            </div>
-            <div
-              class="h-5 w-5 flex-shrink-0 rounded-full border-2"
-              :class="form.courseId === course.id
-                ? 'border-[color:var(--color-accent)] bg-[color:var(--color-accent)]'
-                : 'border-[color:var(--color-line)]'"
-            />
-          </button>
-        </div>
+      <StepOptions
+        v-else-if="step === 3"
+        v-model:allowance-percentage="form.allowancePercentage"
+        v-model:skins-enabled="form.skinsEnabled"
+        v-model:skins-mode="form.skinsMode"
+        :format="form.format"
+        :allowance-is-percentage="allowanceIsPercentage"
+        :presets="ALLOWANCE_PRESETS"
+      />
 
-        <div v-if="selectedCourse" class="mt-4 rounded-2xl border border-[color:var(--color-line)] bg-[color:var(--color-surface-alt)] p-4">
-          <p data-mono class="text-[10px] text-[color:var(--color-ink-muted)]">Tees</p>
-          <div class="mt-2 space-y-1.5">
-            <div
-              v-for="tee in selectedCourse.tees"
-              :key="tee.id"
-              class="flex items-center justify-between text-[13px]"
-            >
-              <div class="flex items-center gap-2">
-                <span class="h-2.5 w-2.5 rounded-full" :class="teeDotClass(tee.color)" />
-                <span>{{ tee.name }}</span>
-              </div>
-              <span data-mono class="text-[10px] text-[color:var(--color-ink-muted)]">
-                CR {{ tee.courseRating }} · SR {{ tee.slopeRating }}
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Step 2: Players -->
-      <div v-if="step === 2" class="mt-6">
-        <p class="text-sm text-[color:var(--color-ink-soft)]">
-          Velg hvem som spiller. Handicap-index og tee styrer slagfordelingen.
-        </p>
-
-        <div v-if="playersStore.sortedPlayers.length > 0" class="mt-4 overflow-hidden rounded-2xl border border-[color:var(--color-line)] bg-[color:var(--color-surface)]">
-          <div
-            v-for="p in playersStore.sortedPlayers"
-            :key="p.id"
-            class="border-b border-[color:var(--color-line-soft)] last:border-b-0"
-          >
-            <div v-if="editingPlayerId === p.id" class="p-4">
-              <label class="block">
-                <span data-mono class="text-[10px] text-[color:var(--color-ink-muted)]">Navn</span>
-                <input
-                  v-model="editDraft.name"
-                  class="mt-1.5 w-full rounded-xl border border-[color:var(--color-line)] bg-[color:var(--color-bg)] px-3 py-2.5 outline-none focus:border-[color:var(--color-accent)]"
-                />
-              </label>
-              <label class="mt-3 block">
-                <span data-mono class="text-[10px] text-[color:var(--color-ink-muted)]">Handicap-index</span>
-                <input
-                  v-model.number="editDraft.handicapIndex"
-                  type="number"
-                  step="0.1"
-                  class="mt-1.5 w-full rounded-xl border border-[color:var(--color-line)] bg-[color:var(--color-bg)] px-3 py-2.5 outline-none focus:border-[color:var(--color-accent)]"
-                />
-              </label>
-              <div class="mt-3 flex gap-2">
-                <button
-                  class="rounded-xl border border-[color:var(--color-clay)] px-3 py-2.5 text-sm text-[color:var(--color-clay)]"
-                  @click="deleteEditPlayer"
-                >Slett</button>
-                <button
-                  class="ml-auto rounded-xl border border-[color:var(--color-line)] px-4 py-2.5 text-sm"
-                  @click="cancelEditPlayer"
-                >Avbryt</button>
-                <button
-                  class="rounded-xl bg-[color:var(--color-accent)] px-4 py-2.5 text-sm font-semibold text-[color:var(--color-bg)]"
-                  @click="saveEditPlayer"
-                >Lagre</button>
-              </div>
-            </div>
-            <template v-else>
-            <div class="flex w-full items-center gap-3 px-4 py-3">
-              <button class="flex min-w-0 flex-1 items-center gap-3 text-left" @click="togglePlayer(p.id)">
-                <div class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-[color:var(--color-bg)]">
-                  <span data-num class="text-[12px] font-semibold">{{ initials(p.name) }}</span>
-                </div>
-                <div class="min-w-0 flex-1">
-                  <p class="truncate text-[15px] font-medium text-[color:var(--color-ink)]">{{ p.name }}</p>
-                  <p data-mono class="mt-0.5 text-[10px] text-[color:var(--color-ink-muted)]">
-                    HCP-index {{ p.handicapIndex.toFixed(1) }}
-                  </p>
-                </div>
-                <div
-                  class="h-5 w-5 rounded-md border-2"
-                  :class="selections[p.id]?.selected
-                    ? 'border-[color:var(--color-accent)] bg-[color:var(--color-accent)]'
-                    : 'border-[color:var(--color-line)]'"
-                >
-                  <svg v-if="selections[p.id]?.selected" width="16" height="16" viewBox="0 0 16 16" class="text-[color:var(--color-bg)]">
-                    <path d="M3 8l3.5 3.5L13 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-                  </svg>
-                </div>
-              </button>
-              <button
-                :aria-label="`Rediger ${p.name}`"
-                class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full border border-[color:var(--color-line)] text-[color:var(--color-ink-soft)]"
-                @click.stop="startEditPlayer(p)"
-              >
-                <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
-                  <path d="M11.5 2.5l2 2L5 13H3v-2L11.5 2.5z" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" />
-                </svg>
-              </button>
-            </div>
-
-            <div v-if="selections[p.id]?.selected" class="flex items-center gap-2 px-4 pt-1 pb-3">
-              <span data-mono class="text-[10px] text-[color:var(--color-ink-muted)]">Tee</span>
-              <div class="flex flex-wrap gap-1.5">
-                <button
-                  v-for="tee in selectedCourse?.tees ?? []"
-                  :key="tee.id"
-                  class="flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium transition"
-                  :class="selections[p.id].teeId === tee.id
-                    ? 'border-[color:var(--color-accent)] bg-[color:var(--color-accent)] text-[color:var(--color-bg)]'
-                    : 'border-[color:var(--color-line)] bg-[color:var(--color-surface-alt)] text-[color:var(--color-ink)]'"
-                  @click.stop="selections[p.id].teeId = tee.id"
-                >
-                  <span class="h-1.5 w-1.5 rounded-full" :class="teeDotClass(tee.color)" />
-                  {{ tee.name }}
-                </button>
-              </div>
-              <span
-                v-if="isTeamCompetition"
-                data-mono
-                class="ml-auto text-[10px] text-[color:var(--color-ink-muted)]"
-              >
-                {{ selections[p.id].sideId.replace('-', ' ').toUpperCase() }}
-              </span>
-            </div>
-            </template>
-          </div>
-        </div>
-
-        <button
-          class="mt-3 flex w-full items-center justify-center gap-1.5 rounded-2xl border border-dashed border-[color:var(--color-line)] py-3 text-sm text-[color:var(--color-ink-soft)]"
-          @click="newPlayerOpen = true"
-        >
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-            <path d="M7 2v10M2 7h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-          </svg>
-          Legg til spiller
-        </button>
-
-        <div v-if="newPlayerOpen" class="mt-3 rounded-2xl border border-[color:var(--color-line)] bg-[color:var(--color-surface)] p-4">
-          <label class="block">
-            <span data-mono class="text-[10px] text-[color:var(--color-ink-muted)]">Navn</span>
-            <input
-              v-model="newPlayer.name"
-              class="mt-1.5 w-full rounded-xl border border-[color:var(--color-line)] bg-[color:var(--color-bg)] px-3 py-2.5 text-[15px] outline-none focus:border-[color:var(--color-accent)]"
-            />
-          </label>
-          <label class="mt-3 block">
-            <span data-mono class="text-[10px] text-[color:var(--color-ink-muted)]">Handicap-index</span>
-            <input
-              v-model.number="newPlayer.handicapIndex"
-              type="number"
-              step="0.1"
-              class="mt-1.5 w-full rounded-xl border border-[color:var(--color-line)] bg-[color:var(--color-bg)] px-3 py-2.5 text-[15px] outline-none focus:border-[color:var(--color-accent)]"
-            />
-          </label>
-          <div class="mt-3 flex gap-2">
-            <button
-              class="flex-1 rounded-xl border border-[color:var(--color-line)] py-2.5 text-sm"
-              @click="newPlayerOpen = false"
-            >Avbryt</button>
-            <button
-              class="flex-1 rounded-xl bg-[color:var(--color-accent)] py-2.5 text-sm font-semibold text-[color:var(--color-bg)]"
-              @click="addInlinePlayer"
-            >Lagre</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Step 3: Options -->
-      <div v-if="step === 3" class="mt-6 space-y-4">
-        <div class="rounded-2xl border border-[color:var(--color-line)] bg-[color:var(--color-surface)] p-4">
-          <div class="flex items-start justify-between gap-3">
-            <div>
-              <p class="text-[15px] font-semibold text-[color:var(--color-ink)]">Skins sidegame</p>
-              <p class="mt-0.5 text-xs text-[color:var(--color-ink-soft)]">
-                {{ supportsSkins(form.format)
-                  ? 'Lavest gross/netto på hullet vinner poengene. Kan kombineres med alle score-baserte formater.'
-                  : 'Ikke tilgjengelig for match play.' }}
-              </p>
-            </div>
-            <button
-              class="relative h-7 w-12 rounded-full transition"
-              :class="form.skinsEnabled
-                ? 'bg-[color:var(--color-accent)]'
-                : 'bg-[color:var(--color-line)]'"
-              :disabled="!supportsSkins(form.format)"
-              :style="!supportsSkins(form.format) ? { opacity: 0.4 } : undefined"
-              @click="form.skinsEnabled = !form.skinsEnabled"
-            >
-              <span
-                class="absolute top-0.5 h-6 w-6 rounded-full bg-white transition"
-                :style="form.skinsEnabled ? { left: '22px' } : { left: '2px' }"
-              />
-            </button>
-          </div>
-
-          <div v-if="form.skinsEnabled" class="mt-4 flex gap-2">
-            <button
-              v-for="m in ['gross', 'net'] as const"
-              :key="m"
-              class="flex-1 rounded-full border py-2 text-sm font-medium transition"
-              :class="form.skinsMode === m
-                ? 'border-[color:var(--color-accent)] bg-[color:var(--color-accent)] text-[color:var(--color-bg)]'
-                : 'border-[color:var(--color-line)] bg-[color:var(--color-surface-alt)] text-[color:var(--color-ink)]'"
-              @click="form.skinsMode = m"
-            >
-              {{ m === 'gross' ? 'Gross' : 'Net' }}
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Step 4: Start -->
-      <div v-if="step === 4" class="mt-6 space-y-3">
-        <div class="rounded-2xl border border-[color:var(--color-line)] bg-[color:var(--color-surface)] p-4">
-          <p data-mono class="text-[10px] text-[color:var(--color-ink-muted)]">Runde</p>
-          <p data-num class="mt-1 text-2xl font-medium tracking-tight">{{ form.name }}</p>
-          <p class="mt-1 text-sm text-[color:var(--color-ink-soft)]">
-            {{ selectedCourse?.clubName }} · {{ getFormatLabel(form.format) }} · {{ form.holes }} hull
-          </p>
-        </div>
-
-        <div class="rounded-2xl border border-[color:var(--color-line)] bg-[color:var(--color-surface)] p-4">
-          <p data-mono class="text-[10px] text-[color:var(--color-ink-muted)]">Spillere</p>
-          <ul class="mt-2 space-y-2">
-            <li
-              v-for="p in selectedPlayers"
-              :key="p.id"
-              class="flex items-center gap-2 text-[13px]"
-            >
-              <span
-                class="h-2 w-2 rounded-full"
-                :class="teeDotClass(selectedCourse?.tees.find((t) => t.id === selections[p.id].teeId)?.color ?? 'green')"
-              />
-              <span class="flex-1">{{ p.name }}</span>
-              <span data-mono class="text-[10px] text-[color:var(--color-ink-muted)]">
-                HCP {{ p.handicapIndex.toFixed(1) }}
-              </span>
-            </li>
-          </ul>
-        </div>
-
-        <div v-if="form.skinsEnabled" class="rounded-2xl border border-[color:var(--color-line)] bg-[color:var(--color-surface)] p-4">
-          <p data-mono class="text-[10px] text-[color:var(--color-ink-muted)]">Sidegame</p>
-          <p class="mt-1 text-sm">Skins · {{ form.skinsMode }}</p>
-        </div>
-
-        <p v-if="issue" class="text-sm text-[color:var(--color-clay)]">{{ issue }}</p>
-      </div>
+      <StepReview
+        v-else-if="step === 4"
+        :name="form.name"
+        :format="form.format"
+        :holes="form.holes"
+        :selected-course="selectedCourse"
+        :selected-players="selectedPlayers"
+        :selections="selections"
+        :allowance-label="allowanceRule.label"
+        :skins-enabled="form.skinsEnabled"
+        :skins-mode="form.skinsMode"
+        :issue="issue"
+      />
     </div>
 
     <div class="flex gap-2 border-t border-[color:var(--color-line)] bg-[color:var(--color-surface-alt)] px-4 py-3 pb-[calc(0.75rem+var(--safe-bottom))]">
