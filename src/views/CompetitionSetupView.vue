@@ -106,10 +106,10 @@ watch(
 watch(
   () => form.format,
   (format) => {
-    if (!supportsSideGame('skins', format, participantCount.value)) form.skinsEnabled = false
-    if (!supportsSideGame('nassau', format, participantCount.value)) form.nassauEnabled = false
     form.allowancePercentage = getDefaultPercentage(format)
     autoAssignSides()
+    if (!supportsSideGame('skins', format, participantCount.value)) form.skinsEnabled = false
+    if (!supportsSideGame('nassau', format, participantCount.value)) form.nassauEnabled = false
   },
   { immediate: true },
 )

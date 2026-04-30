@@ -41,8 +41,8 @@ const skinsLeader = computed<SkinsLeaderInfo | null>(() => {
 
 const skinsCarryValue = computed(() => {
   const summary = props.skinsSummary
-  if (!summary || summary.holes.length === 0) return 1
-  return summary.holes[summary.holes.length - 1].carryValue
+  if (!summary) return 1
+  return summary.holes[props.currentHole - 1]?.carryValue ?? 1
 })
 
 const skinsHasResolvedHole = computed(() => {
@@ -64,14 +64,15 @@ function statusForSegmentLabel(label: 'F' | 'B' | 'T') {
 function nassauPillTone(balance: number, holesPlayed: number) {
   if (holesPlayed === 0) return 'bg-[color:var(--color-surface)] text-[color:var(--color-ink-muted)]'
   if (balance === 0) return 'bg-[color:var(--color-surface-alt)] text-[color:var(--color-ink)]'
-  return 'bg-[color:var(--color-emerald)]/10 text-[color:var(--color-emerald)]'
+  if (balance > 0) return 'bg-[color:var(--color-emerald)]/10 text-[color:var(--color-emerald)]'
+  return 'bg-[color:var(--color-clay)]/10 text-[color:var(--color-clay)]'
 }
 
 function nassauPillText(balance: number, holesPlayed: number) {
   if (holesPlayed === 0) return '–'
   if (balance === 0) return 'AS'
   const margin = Math.abs(balance)
-  return `${margin}↑`
+  return `${margin}${balance > 0 ? '↑' : '↓'}`
 }
 
 function openGame(id: string) {

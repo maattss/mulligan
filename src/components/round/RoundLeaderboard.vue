@@ -38,7 +38,7 @@ const metricKey = computed<'stablefordPoints' | 'netTotal'>(() =>
         </div>
         <div class="flex items-baseline gap-1.5">
           <span data-mono class="text-[10px] text-[color:var(--color-ink-muted)]">
-            thru {{ entry.holesPlayed }}
+            etter {{ entry.holesPlayed }}
           </span>
           <div data-num class="text-[18px] font-semibold tracking-[-0.02em]">
             {{ isMatchPlay ? (entry.matchStatus ?? '–') : isStableford ? entry.stablefordPoints : entry.netTotal }}
