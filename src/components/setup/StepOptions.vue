@@ -6,7 +6,6 @@ import {
   type NassauMode,
   type SkinsMode,
 } from '@/lib/golf'
-import { Switch } from '@/components/ui/switch'
 
 const props = defineProps<{
   format: CompetitionFormat
@@ -144,13 +143,22 @@ function selectPreset(value: number) {
                 <p class="mt-0.5 text-xs text-[color:var(--color-ink-soft)]">{{ skinsHint }}</p>
               </div>
             </div>
-            <Switch
-              size="lg"
+            <button
+              role="switch"
               aria-label="Skins sidegame"
-              :model-value="skinsEnabled"
+              :aria-checked="skinsEnabled"
               :disabled="!supportsSkins"
-              @update:model-value="setSkinsEnabled"
-            />
+              class="relative h-7 w-12 flex-shrink-0 rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+              :class="skinsEnabled
+                ? 'bg-[color:var(--color-accent)]'
+                : 'bg-[color:var(--color-ink-dim)]'"
+              @click="setSkinsEnabled(!skinsEnabled)"
+            >
+              <span
+                class="absolute top-0.5 block h-6 w-6 rounded-full bg-white shadow transition-transform"
+                :class="skinsEnabled ? 'translate-x-[22px]' : 'translate-x-0.5'"
+              />
+            </button>
           </div>
 
           <div v-if="skinsEnabled && supportsSkins" class="mt-4 flex gap-2">
@@ -180,13 +188,22 @@ function selectPreset(value: number) {
                 <p class="mt-0.5 text-xs text-[color:var(--color-ink-soft)]">{{ nassauHint }}</p>
               </div>
             </div>
-            <Switch
-              size="lg"
+            <button
+              role="switch"
               aria-label="Nassau sidegame"
-              :model-value="nassauEnabled"
+              :aria-checked="nassauEnabled"
               :disabled="!supportsNassau"
-              @update:model-value="setNassauEnabled"
-            />
+              class="relative h-7 w-12 flex-shrink-0 rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+              :class="nassauEnabled
+                ? 'bg-[color:var(--color-accent)]'
+                : 'bg-[color:var(--color-ink-dim)]'"
+              @click="setNassauEnabled(!nassauEnabled)"
+            >
+              <span
+                class="absolute top-0.5 block h-6 w-6 rounded-full bg-white shadow transition-transform"
+                :class="nassauEnabled ? 'translate-x-[22px]' : 'translate-x-0.5'"
+              />
+            </button>
           </div>
 
           <div v-if="nassauEnabled && supportsNassau" class="mt-4 flex gap-2">
