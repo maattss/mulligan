@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   buildCompetitionSummary,
@@ -9,12 +9,15 @@ import {
   getNetScore,
   getStablefordPoints,
   getStrokeAdjustments,
+  getSideGameTitle,
   isPickedUp,
   type Competition,
   type CompetitionPlayer,
+  type CompetitionSideGame,
   type LeaderboardEntry,
 } from '@/lib/golf'
 import { useCompetitionsStore } from '@/stores/competitions'
+import SideGameDetail from '@/components/round/SideGameDetail.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -267,11 +270,35 @@ function viewCellColor(cell: Cell | undefined, par: number) {
 }
 
 const skinsSummary = computed(() => summary.value?.skins ?? null)
-const skinsHoleResults = computed(() => skinsSummary.value?.holes ?? [])
+const nassauSummary = computed(() => summary.value?.nassau ?? null)
 
-function skinsTotalForEntry(entryId: string) {
-  return skinsSummary.value?.totalSkins[entryId] ?? 0
-}
+const enabledSideGames = computed<CompetitionSideGame[]>(() => {
+  const games: CompetitionSideGame[] = []
+  for (const game of competition.value?.sideGames ?? []) {
+    if (!game.enabled) continue
+    if (game.type === 'skins' && !skinsSummary.value) continue
+    if (game.type === 'nassau' && !nassauSummary.value) continue
+    games.push(game)
+  }
+  return games
+})
+
+const activeSideGameId = ref<string | null>(null)
+const activeSideGame = computed<CompetitionSideGame | null>(() => {
+  const games = enabledSideGames.value
+  if (games.length === 0) return null
+  return games.find((game) => game.id === activeSideGameId.value) ?? games[0]
+})
+
+watch(enabledSideGames, (games) => {
+  if (games.length === 0) {
+    activeSideGameId.value = null
+    return
+  }
+  if (!games.some((game) => game.id === activeSideGameId.value)) {
+    activeSideGameId.value = games[0].id
+  }
+}, { immediate: true })
 </script>
 
 <template>
@@ -452,41 +479,32 @@ function skinsTotalForEntry(entryId: string) {
       </div>
     </section>
 
-    <section v-if="skinsSummary" class="px-5 pt-[22px] pb-2">
-      <p data-mono class="pb-2 text-[10px] text-[color:var(--color-ink-muted)]">Skins · {{ skinsSummary.mode }}</p>
-      <div class="overflow-hidden rounded-[16px] border border-[color:var(--color-line)] bg-[color:var(--color-surface)]">
-        <div class="px-4 py-3">
-          <p data-mono class="text-[10px] text-[color:var(--color-ink-muted)]">Total</p>
-          <ul class="mt-1.5 grid grid-cols-2 gap-1.5 text-[12px]">
-            <li
-              v-for="entry in leaderboard"
-              :key="entry.id"
-              class="flex items-center justify-between rounded-lg bg-[color:var(--color-surface-alt)] px-2.5 py-1.5"
-            >
-              <span class="truncate">{{ entry.label }}</span>
-              <span data-num class="font-semibold">{{ skinsTotalForEntry(entry.id) }}</span>
-            </li>
-          </ul>
-        </div>
-        <div class="border-t border-[color:var(--color-line-soft)] px-4 py-3">
-          <p data-mono class="text-[10px] text-[color:var(--color-ink-muted)]">Per hull</p>
-          <ul class="mt-1.5 grid grid-cols-3 gap-1 text-[11px] sm:grid-cols-6">
-            <li
-              v-for="hole in skinsHoleResults"
-              :key="hole.hole"
-              class="flex items-center justify-between rounded-md border border-[color:var(--color-line-soft)] px-2 py-1"
-              :class="hole.winnerId
-                ? 'bg-[color:var(--color-emerald)]/10'
-                : 'bg-[color:var(--color-surface-alt)]'"
-            >
-              <span data-mono class="text-[color:var(--color-ink-muted)]">H{{ hole.hole }}</span>
-              <span class="ml-1 truncate font-medium text-[color:var(--color-ink)]">
-                {{ hole.winnerLabel ?? `+${hole.carryValue}` }}
-              </span>
-            </li>
-          </ul>
+    <section v-if="enabledSideGames.length" class="px-5 pt-[22px] pb-2">
+      <div class="flex items-center justify-between pb-2">
+        <p data-mono class="text-[10px] text-[color:var(--color-ink-muted)]">Sidespill</p>
+        <div v-if="enabledSideGames.length > 1" class="flex gap-1">
+          <button
+            v-for="game in enabledSideGames"
+            :key="game.id"
+            class="rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition"
+            :class="activeSideGame?.id === game.id
+              ? 'border-[color:var(--color-accent)] bg-[color:var(--color-accent)] text-[color:var(--color-bg)]'
+              : 'border-[color:var(--color-line)] bg-[color:var(--color-surface-alt)] text-[color:var(--color-ink)]'"
+            @click="activeSideGameId = game.id"
+          >
+            {{ getSideGameTitle(game.type) }}
+          </button>
         </div>
       </div>
+
+      <SideGameDetail
+        v-if="activeSideGame"
+        :game="activeSideGame"
+        :skins-summary="skinsSummary"
+        :nassau-summary="nassauSummary"
+        :leaderboard="leaderboard"
+        embedded
+      />
     </section>
 
     <p data-mono class="mt-5 text-center text-[10px] text-[color:var(--color-ink-muted)]">

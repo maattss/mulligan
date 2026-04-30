@@ -1,10 +1,16 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { supportsSkins, type CompetitionFormat, type SkinsMode } from '@/lib/golf'
+import {
+  supportsSideGame,
+  type CompetitionFormat,
+  type NassauMode,
+  type SkinsMode,
+} from '@/lib/golf'
 import { Switch } from '@/components/ui/switch'
 
 const props = defineProps<{
   format: CompetitionFormat
+  participantCount: number
   allowanceIsPercentage: boolean
   presets: readonly number[]
 }>()
@@ -12,6 +18,8 @@ const props = defineProps<{
 const allowancePercentage = defineModel<number>('allowancePercentage', { required: true })
 const skinsEnabled = defineModel<boolean>('skinsEnabled', { required: true })
 const skinsMode = defineModel<SkinsMode>('skinsMode', { required: true })
+const nassauEnabled = defineModel<boolean>('nassauEnabled', { required: true })
+const nassauMode = defineModel<NassauMode>('nassauMode', { required: true })
 
 const allowanceDescription = computed(() => {
   if (!props.allowanceIsPercentage) {
@@ -45,9 +53,27 @@ const selectedPresetIndex = computed({
   },
 })
 
+const supportsSkins = computed(() => supportsSideGame('skins', props.format, props.participantCount))
+const supportsNassau = computed(() => supportsSideGame('nassau', props.format, props.participantCount))
+
+const skinsHint = computed(() => {
+  if (props.format === 'match-play') return 'Ikke tilgjengelig for match play.'
+  return 'Lavest gross/netto på hullet vinner poengene. Pickup ekskluderer hullet.'
+})
+
+const nassauHint = computed(() => {
+  if (props.participantCount !== 2) return 'Krever nøyaktig 2 spillere eller 2 lag.'
+  return 'Tre delmatcher: front 9, back 9 og totalt. Lavest gross/netto vinner hullet.'
+})
+
 function setSkinsEnabled(value: boolean) {
-  if (!supportsSkins(props.format) && value) return
+  if (!supportsSkins.value && value) return
   skinsEnabled.value = value
+}
+
+function setNassauEnabled(value: boolean) {
+  if (!supportsNassau.value && value) return
+  nassauEnabled.value = value
 }
 
 function selectPreset(value: number) {
@@ -101,37 +127,82 @@ function selectPreset(value: number) {
       </div>
     </div>
 
-    <div class="rounded-2xl border border-[color:var(--color-line)] bg-[color:var(--color-surface)] p-4">
-      <div class="flex items-start justify-between gap-3">
-        <div>
-          <p class="text-[15px] font-semibold text-[color:var(--color-ink)]">Skins sidegame</p>
-          <p class="mt-0.5 text-xs text-[color:var(--color-ink-soft)]">
-            {{ supportsSkins(format)
-              ? 'Lavest gross/netto på hullet vinner poengene. Pickup ekskluderer hullet.'
-              : 'Ikke tilgjengelig for match play.' }}
-          </p>
-        </div>
-        <Switch
-          size="lg"
-          aria-label="Skins sidegame"
-          :model-value="skinsEnabled"
-          :disabled="!supportsSkins(format)"
-          @update:model-value="setSkinsEnabled"
-        />
-      </div>
+    <div>
+      <p data-mono class="mb-2 px-1 text-[10px] uppercase tracking-wide text-[color:var(--color-ink-muted)]">
+        Sidespill
+      </p>
+      <div class="space-y-3">
+        <div class="rounded-2xl border border-[color:var(--color-line)] bg-[color:var(--color-surface)] p-4">
+          <div class="flex items-start justify-between gap-3">
+            <div class="flex items-start gap-2.5">
+              <span
+                class="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-[color:var(--color-gold)]/90 text-[11px] font-bold text-[color:var(--color-surface)]"
+                data-num
+              >S</span>
+              <div>
+                <p class="text-[15px] font-semibold text-[color:var(--color-ink)]">Skins</p>
+                <p class="mt-0.5 text-xs text-[color:var(--color-ink-soft)]">{{ skinsHint }}</p>
+              </div>
+            </div>
+            <Switch
+              size="lg"
+              aria-label="Skins sidegame"
+              :model-value="skinsEnabled"
+              :disabled="!supportsSkins"
+              @update:model-value="setSkinsEnabled"
+            />
+          </div>
 
-      <div v-if="skinsEnabled" class="mt-4 flex gap-2">
-        <button
-          v-for="m in ['gross', 'net'] as const"
-          :key="m"
-          class="flex-1 rounded-full border py-2 text-sm font-medium transition"
-          :class="skinsMode === m
-            ? 'border-[color:var(--color-accent)] bg-[color:var(--color-accent)] text-[color:var(--color-bg)]'
-            : 'border-[color:var(--color-line)] bg-[color:var(--color-surface-alt)] text-[color:var(--color-ink)]'"
-          @click="skinsMode = m"
-        >
-          {{ m === 'gross' ? 'Gross' : 'Net' }}
-        </button>
+          <div v-if="skinsEnabled && supportsSkins" class="mt-4 flex gap-2">
+            <button
+              v-for="m in ['gross', 'net'] as const"
+              :key="m"
+              class="flex-1 rounded-full border py-2 text-sm font-medium transition"
+              :class="skinsMode === m
+                ? 'border-[color:var(--color-accent)] bg-[color:var(--color-accent)] text-[color:var(--color-bg)]'
+                : 'border-[color:var(--color-line)] bg-[color:var(--color-surface-alt)] text-[color:var(--color-ink)]'"
+              @click="skinsMode = m"
+            >
+              {{ m === 'gross' ? 'Gross' : 'Net' }}
+            </button>
+          </div>
+        </div>
+
+        <div class="rounded-2xl border border-[color:var(--color-line)] bg-[color:var(--color-surface)] p-4">
+          <div class="flex items-start justify-between gap-3">
+            <div class="flex items-start gap-2.5">
+              <span
+                class="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-[color:var(--color-accent)]/15 text-[11px] font-bold text-[color:var(--color-accent)]"
+                data-num
+              >N</span>
+              <div>
+                <p class="text-[15px] font-semibold text-[color:var(--color-ink)]">Nassau</p>
+                <p class="mt-0.5 text-xs text-[color:var(--color-ink-soft)]">{{ nassauHint }}</p>
+              </div>
+            </div>
+            <Switch
+              size="lg"
+              aria-label="Nassau sidegame"
+              :model-value="nassauEnabled"
+              :disabled="!supportsNassau"
+              @update:model-value="setNassauEnabled"
+            />
+          </div>
+
+          <div v-if="nassauEnabled && supportsNassau" class="mt-4 flex gap-2">
+            <button
+              v-for="m in ['gross', 'net'] as const"
+              :key="m"
+              class="flex-1 rounded-full border py-2 text-sm font-medium transition"
+              :class="nassauMode === m
+                ? 'border-[color:var(--color-accent)] bg-[color:var(--color-accent)] text-[color:var(--color-bg)]'
+                : 'border-[color:var(--color-line)] bg-[color:var(--color-surface-alt)] text-[color:var(--color-ink)]'"
+              @click="nassauMode = m"
+            >
+              {{ m === 'gross' ? 'Gross' : 'Net' }}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   </div>

@@ -8,8 +8,10 @@ export const COMPETITION_FORMATS = [
 ] as const
 
 export type CompetitionFormat = typeof COMPETITION_FORMATS[number]
-export type SideGameType = 'skins'
+export const SIDE_GAME_TYPES = ['skins', 'nassau'] as const
+export type SideGameType = typeof SIDE_GAME_TYPES[number]
 export type SkinsMode = 'gross' | 'net'
+export type NassauMode = 'gross' | 'net'
 export type CompetitionStatus = 'in_progress' | 'completed'
 export type NullableScore = number | null
 
@@ -105,12 +107,21 @@ export interface CompetitionPlayer {
   sideId?: string
 }
 
-export interface CompetitionSideGame {
+export interface SkinsSideGame {
   id: string
-  type: SideGameType
+  type: 'skins'
   enabled: boolean
   mode: SkinsMode
 }
+
+export interface NassauSideGame {
+  id: string
+  type: 'nassau'
+  enabled: boolean
+  mode: NassauMode
+}
+
+export type CompetitionSideGame = SkinsSideGame | NassauSideGame
 
 export interface CompetitionScores {
   playerScores: Record<string, NullableScore[]>
@@ -182,9 +193,40 @@ export interface SkinsSummary {
   holes: SkinsHoleResult[]
 }
 
+export type NassauSegmentKey = 'front' | 'back' | 'total'
+
+export interface NassauParticipant {
+  id: string
+  label: string
+}
+
+export interface NassauHoleResult {
+  hole: number
+  winnerId: string | null
+  pending: boolean
+}
+
+export interface NassauSegmentResult {
+  segment: NassauSegmentKey
+  holesInSegment: number
+  holesPlayed: number
+  balance: number
+  leaderId: string | null
+  status: string
+  closed: boolean
+}
+
+export interface NassauSummary {
+  mode: NassauMode
+  participants: [NassauParticipant, NassauParticipant]
+  segments: NassauSegmentResult[]
+  holes: NassauHoleResult[]
+}
+
 export interface CompetitionSummary {
   leaderboard: LeaderboardEntry[]
   skins: SkinsSummary | null
+  nassau: NassauSummary | null
   completeHoles: number
 }
 
@@ -257,6 +299,50 @@ export function supportsSkins(format: CompetitionFormat) {
     format === 'fourball-stableford' ||
     format === 'scramble-2'
   )
+}
+
+export function supportsNassau(format: CompetitionFormat, participantCount: number) {
+  if (participantCount !== 2) return false
+  return (
+    format === 'stroke' ||
+    format === 'stableford' ||
+    format === 'match-play' ||
+    format === 'fourball-stroke' ||
+    format === 'fourball-stableford' ||
+    format === 'scramble-2'
+  )
+}
+
+export function competitionParticipantCount(
+  format: CompetitionFormat,
+  playerCount: number,
+  sideCount: number,
+) {
+  return isTeamFormat(format) ? sideCount : playerCount
+}
+
+export function supportsSideGame(
+  type: SideGameType,
+  format: CompetitionFormat,
+  participantCount: number,
+) {
+  if (type === 'skins') return supportsSkins(format) && participantCount >= 2
+  if (type === 'nassau') return supportsNassau(format, participantCount)
+  return false
+}
+
+const SIDE_GAME_LABELS: Record<SideGameType, string> = {
+  skins: 'Skins',
+  nassau: 'Nassau',
+}
+
+export function getSideGameLabel(game: CompetitionSideGame) {
+  const base = SIDE_GAME_LABELS[game.type]
+  return `${base} · ${game.mode === 'gross' ? 'gross' : 'netto'}`
+}
+
+export function getSideGameTitle(type: SideGameType) {
+  return SIDE_GAME_LABELS[type]
 }
 
 export function createEmptyScoreArray(holes: number) {
@@ -477,10 +563,12 @@ export function buildCompetitionSummary(competition: Competition): CompetitionSu
   const completeHoles = resolveCompleteHoles(competition)
   const leaderboard = buildLeaderboard(competition)
   const skins = buildSkinsSummary(competition, leaderboard)
+  const nassau = buildNassauSummary(competition, leaderboard)
 
   return {
     leaderboard,
     skins,
+    nassau,
     completeHoles,
   }
 }
@@ -799,7 +887,9 @@ function buildMatchPlayLeaderboard(competition: Competition) {
 }
 
 function buildSkinsSummary(competition: Competition, leaderboard: LeaderboardEntry[]): SkinsSummary | null {
-  const sideGame = competition.sideGames.find((entry) => entry.type === 'skins' && entry.enabled)
+  const sideGame = competition.sideGames.find(
+    (entry): entry is SkinsSideGame => entry.type === 'skins' && entry.enabled,
+  )
 
   if (!sideGame) {
     return null
@@ -1020,6 +1110,173 @@ function matchStatusForPlayer(
   return isLeading
     ? `Leder ${margin} opp etter ${holesPlayed}`
     : `Ligger under ${margin} ned etter ${holesPlayed}`
+}
+
+function buildNassauSummary(
+  competition: Competition,
+  leaderboard: LeaderboardEntry[],
+): NassauSummary | null {
+  const sideGame = competition.sideGames.find(
+    (entry): entry is NassauSideGame => entry.type === 'nassau' && entry.enabled,
+  )
+
+  if (!sideGame) {
+    return null
+  }
+
+  type NassauContestant = {
+    id: string
+    label: string
+    scoreAtHole: (hole: number) => NullableScore
+    isPickedUp: (hole: number) => boolean
+  }
+  const contestants: NassauContestant[] = []
+
+  if (
+    competition.format === 'stroke' ||
+    competition.format === 'stableford' ||
+    competition.format === 'match-play'
+  ) {
+    if (competition.players.length !== 2) return null
+    for (const player of competition.players) {
+      const adjustments = getCompetitionPlayerAdjustments(competition, player)
+      const scores = competition.scores.playerScores[player.id]
+      const pickups = competition.scores.playerPickups?.[player.id]
+      contestants.push({
+        id: player.id,
+        label: player.displayName,
+        scoreAtHole: (hole) => {
+          const grossScore = scores?.[hole] ?? null
+          return sideGame.mode === 'gross'
+            ? grossScore
+            : getNetScore(grossScore, adjustments[hole] ?? 0)
+        },
+        isPickedUp: (hole) => isPickedUp(pickups, hole),
+      })
+    }
+  } else if (
+    competition.format === 'fourball-stroke' ||
+    competition.format === 'fourball-stableford' ||
+    competition.format === 'scramble-2'
+  ) {
+    if (competition.sides.length !== 2) return null
+    for (const side of competition.sides) {
+      const leaderboardEntry = leaderboard.find((entry) => entry.id === side.id)
+      contestants.push({
+        id: side.id,
+        label: leaderboardEntry?.label ?? side.name,
+        scoreAtHole: (hole) => resolveSideSkinScore(competition, side, sideGame.mode, hole),
+        isPickedUp: (hole) => isSidePickedUp(competition, side, hole),
+      })
+    }
+  } else {
+    return null
+  }
+
+  if (contestants.length !== 2) return null
+
+  const [first, second] = contestants
+  const totalHoles = competition.holes
+  const holes: NassauHoleResult[] = []
+
+  for (let hole = 0; hole < totalHoles; hole += 1) {
+    const firstPickedUp = first.isPickedUp(hole)
+    const secondPickedUp = second.isPickedUp(hole)
+    const firstScore = first.scoreAtHole(hole)
+    const secondScore = second.scoreAtHole(hole)
+
+    const firstResolved = firstPickedUp || firstScore !== null
+    const secondResolved = secondPickedUp || secondScore !== null
+
+    if (!firstResolved || !secondResolved) {
+      holes.push({ hole: hole + 1, winnerId: null, pending: true })
+      continue
+    }
+
+    if (firstPickedUp && secondPickedUp) {
+      holes.push({ hole: hole + 1, winnerId: null, pending: false })
+    } else if (firstPickedUp) {
+      holes.push({ hole: hole + 1, winnerId: second.id, pending: false })
+    } else if (secondPickedUp) {
+      holes.push({ hole: hole + 1, winnerId: first.id, pending: false })
+    } else if (firstScore !== null && secondScore !== null && firstScore < secondScore) {
+      holes.push({ hole: hole + 1, winnerId: first.id, pending: false })
+    } else if (firstScore !== null && secondScore !== null && secondScore < firstScore) {
+      holes.push({ hole: hole + 1, winnerId: second.id, pending: false })
+    } else {
+      holes.push({ hole: hole + 1, winnerId: null, pending: false })
+    }
+  }
+
+  const segments = totalHoles >= 18
+    ? [
+        buildNassauSegment(holes, 'front', 0, 9, first, second),
+        buildNassauSegment(holes, 'back', 9, 18, first, second),
+        buildNassauSegment(holes, 'total', 0, totalHoles, first, second),
+      ]
+    : [buildNassauSegment(holes, 'total', 0, totalHoles, first, second)]
+
+  return {
+    mode: sideGame.mode,
+    participants: [
+      { id: first.id, label: first.label },
+      { id: second.id, label: second.label },
+    ],
+    segments,
+    holes,
+  }
+}
+
+function buildNassauSegment(
+  holes: NassauHoleResult[],
+  segment: NassauSegmentKey,
+  fromIndex: number,
+  toIndex: number,
+  first: { id: string; label: string },
+  second: { id: string; label: string },
+): NassauSegmentResult {
+  const slice = holes.slice(fromIndex, toIndex)
+  const holesInSegment = slice.length
+  let firstWins = 0
+  let secondWins = 0
+  let resolvedHoles = 0
+
+  for (const entry of slice) {
+    if (entry.pending) continue
+    resolvedHoles += 1
+    if (entry.winnerId === first.id) firstWins += 1
+    else if (entry.winnerId === second.id) secondWins += 1
+  }
+
+  const balance = firstWins - secondWins
+  const remaining = holesInSegment - resolvedHoles
+  const margin = Math.abs(balance)
+  const closed = resolvedHoles > 0 && margin > remaining
+  const leaderId = balance > 0 ? first.id : balance < 0 ? second.id : null
+  const leaderLabel = balance > 0 ? first.label : balance < 0 ? second.label : null
+
+  let status = 'AS'
+  if (resolvedHoles === 0) {
+    status = 'Ikke startet'
+  } else if (closed && leaderLabel) {
+    status = `${leaderLabel} vant ${margin}&${remaining}`
+  } else if (resolvedHoles === holesInSegment) {
+    status = balance === 0 ? 'Halv' : `${leaderLabel} vant ${margin} opp`
+  } else if (balance === 0) {
+    status = `AS etter ${resolvedHoles}`
+  } else if (leaderLabel) {
+    status = `${leaderLabel} ${margin} opp etter ${resolvedHoles}`
+  }
+
+  return {
+    segment,
+    holesInSegment,
+    holesPlayed: resolvedHoles,
+    balance,
+    leaderId,
+    status,
+    closed,
+  }
 }
 
 function sum(values: number[]) {
