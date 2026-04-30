@@ -22,6 +22,7 @@ import NumberPad from '@/components/round/NumberPad.vue'
 import PlayerScoreRow from '@/components/round/PlayerScoreRow.vue'
 import SideScoreRow from '@/components/round/SideScoreRow.vue'
 import RoundLeaderboard from '@/components/round/RoundLeaderboard.vue'
+import LiveSideGames from '@/components/round/LiveSideGames.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -70,7 +71,9 @@ const isStableford = computed(() =>
 const isScramble = computed(() => competition.value?.format === 'scramble-2')
 const isMatchPlay = computed(() => competition.value?.format === 'match-play')
 
-const skinsGame = computed(() => competition.value?.sideGames.find((g) => g.type === 'skins' && g.enabled))
+const enabledSideGames = computed(() => competition.value?.sideGames.filter((g) => g.enabled) ?? [])
+const skinsSummary = computed(() => summary.value?.skins ?? null)
+const nassauSummary = computed(() => summary.value?.nassau ?? null)
 
 const visibleHoles = computed(() => {
   const total = holeCount.value
@@ -338,12 +341,13 @@ const padContext = computed(() => {
       </div>
     </section>
 
-    <div v-if="skinsGame" class="mx-4 mb-1 flex items-center justify-between rounded-xl border border-[color:var(--color-line)] bg-gradient-to-r from-[color:var(--color-surface)] to-[color:var(--color-surface-alt)] px-3.5 py-2.5">
-      <div class="flex items-center gap-2">
-        <span class="flex h-[18px] w-[18px] items-center justify-center rounded-full bg-[color:var(--color-gold)]/90 text-[10px] font-bold text-[color:var(--color-surface)]" data-num>S</span>
-        <span class="text-xs font-medium text-[color:var(--color-ink)]">Skins · {{ skinsGame.mode }}</span>
-      </div>
-    </div>
+    <LiveSideGames
+      :side-games="enabledSideGames"
+      :skins-summary="skinsSummary"
+      :nassau-summary="nassauSummary"
+      :leaderboard="leaderboard"
+      :current-hole="currentHole"
+    />
 
     <section class="flex-1 overflow-y-auto px-4 pt-3 pb-3">
       <template v-if="!isScramble">

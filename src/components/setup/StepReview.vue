@@ -1,5 +1,12 @@
 <script setup lang="ts">
-import { getFormatLabel, type CompetitionFormat, type CourseDetail, type PlayerProfile, type SkinsMode } from '@/lib/golf'
+import {
+  getFormatLabel,
+  getSideGameLabel,
+  type CompetitionFormat,
+  type CompetitionSideGame,
+  type CourseDetail,
+  type PlayerProfile,
+} from '@/lib/golf'
 import { teeDotClass, type PlayerSelection } from './shared'
 
 defineProps<{
@@ -10,8 +17,7 @@ defineProps<{
   selectedPlayers: PlayerProfile[]
   selections: Record<string, PlayerSelection>
   allowanceLabel: string
-  skinsEnabled: boolean
-  skinsMode: SkinsMode
+  sideGames: CompetitionSideGame[]
   issue: string
 }>()
 </script>
@@ -49,9 +55,11 @@ defineProps<{
       </ul>
     </div>
 
-    <div v-if="skinsEnabled" class="rounded-2xl border border-[color:var(--color-line)] bg-[color:var(--color-surface)] p-4">
-      <p data-mono class="text-[10px] text-[color:var(--color-ink-muted)]">Sidegame</p>
-      <p class="mt-1 text-sm">Skins · {{ skinsMode }}</p>
+    <div v-if="sideGames.length" class="rounded-2xl border border-[color:var(--color-line)] bg-[color:var(--color-surface)] p-4">
+      <p data-mono class="text-[10px] text-[color:var(--color-ink-muted)]">Sidespill</p>
+      <ul class="mt-1 space-y-1 text-sm">
+        <li v-for="game in sideGames" :key="game.id">{{ getSideGameLabel(game) }}</li>
+      </ul>
     </div>
 
     <p v-if="issue" class="text-sm text-[color:var(--color-clay)]">{{ issue }}</p>

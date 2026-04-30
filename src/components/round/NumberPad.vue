@@ -103,11 +103,18 @@ function tapDigit(digit: string) {
     return
   }
 
-  // 1-digit value: schedule auto-commit so quick taps like "8" still save
-  pendingCommit = setTimeout(() => {
-    pendingCommit = null
-    commitNow(n)
-  }, 800)
+  // Only "1" can realistically prefix a two-digit golf score (10–19), so
+  // wait briefly in case the user is mid-entry. Digits 2–9 commit instantly
+  // — matching the snappy feel of the quick-pick buttons.
+  if (digit === '1') {
+    pendingCommit = setTimeout(() => {
+      pendingCommit = null
+      commitNow(n)
+    }, 600)
+    return
+  }
+
+  commitNow(n)
 }
 
 function tapDelete() {
@@ -247,8 +254,10 @@ function close() {
         </div>
         <button
           data-testid="pad-pickup"
-          class="h-[52px] rounded-2xl border border-[color:var(--color-clay)] bg-transparent text-[14px] font-semibold text-[color:var(--color-clay)] transition"
-          :class="isPickedUp ? 'bg-[color:var(--color-clay)]/10' : ''"
+          class="h-[52px] rounded-2xl text-[14px] font-semibold text-[color:var(--color-bg)] shadow-sm transition active:translate-y-px"
+          :class="isPickedUp
+            ? 'bg-[color:var(--color-clay)]/85'
+            : 'bg-[color:var(--color-clay)]'"
           @click="tapPickup"
         >
           {{ isPickedUp ? 'Plukket opp ✓' : 'Plukk opp' }}

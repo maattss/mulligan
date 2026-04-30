@@ -431,6 +431,132 @@ describe('skins side game', () => {
   })
 })
 
+describe('nassau side game', () => {
+  const profiles: PlayerProfile[] = [
+    { id: 'p1', name: 'Alice', handicapIndex: 5 },
+    { id: 'p2', name: 'Bob', handicapIndex: 14 },
+  ]
+  const teamProfiles: PlayerProfile[] = [
+    ...profiles,
+    { id: 'p3', name: 'Cara', handicapIndex: 22 },
+    { id: 'p4', name: 'Dean', handicapIndex: 30 },
+  ]
+
+  function setup(format: CompetitionSetupInput['format'], holes: 9 | 18 = 18, players?: CompetitionSetupInput['players']): CompetitionSetupInput {
+    return {
+      name: 'Nassau Demo',
+      date: '2026-04-17',
+      holes,
+      format,
+      courseId: demoCourse.id,
+      players: players ?? profiles.map((profile) => ({ playerId: profile.id, teeId: blackTee.id })),
+      sideGames: [{ id: 'sg1', type: 'nassau', enabled: true, mode: 'gross' }],
+    }
+  }
+
+  it('emits front, back, and total segments for an 18-hole stroke match', () => {
+    const competition = createCompetitionFromSetup(setup('stroke'), profiles, demoCourse)
+    const aliceScores = par72Scores(0)
+    const bobScores = par72Scores(1)
+    bobScores[0] = aliceScores[0] - 2
+    bobScores[1] = aliceScores[1] - 2
+    competition.scores.playerScores[competition.players[0].id] = aliceScores
+    competition.scores.playerScores[competition.players[1].id] = bobScores
+
+    const summary = buildCompetitionSummary(competition)
+    expect(summary.nassau).not.toBeNull()
+    const segments = summary.nassau!.segments
+    expect(segments.map((segment) => segment.segment)).toEqual(['front', 'back', 'total'])
+    const total = segments.find((segment) => segment.segment === 'total')!
+    expect(total.holesInSegment).toBe(18)
+  })
+
+  it('emits a single total segment for 9-hole rounds', () => {
+    const competition = createCompetitionFromSetup(setup('stroke', 9), profiles, demoCourse)
+    competition.scores.playerScores[competition.players[0].id] = par72Scores(0).slice(0, 9)
+    competition.scores.playerScores[competition.players[1].id] = par72Scores(1).slice(0, 9)
+    const summary = buildCompetitionSummary(competition)
+    expect(summary.nassau!.segments.map((segment) => segment.segment)).toEqual(['total'])
+    expect(summary.nassau!.segments[0].holesInSegment).toBe(9)
+  })
+
+  it('marks a segment closed when the lead exceeds remaining holes', () => {
+    const competition = createCompetitionFromSetup(setup('stroke'), profiles, demoCourse)
+    const aliceScores = par72Scores(0)
+    const bobScores = par72Scores(2)
+    competition.scores.playerScores[competition.players[0].id] = aliceScores
+    competition.scores.playerScores[competition.players[1].id] = bobScores
+    const summary = buildCompetitionSummary(competition)
+    const total = summary.nassau!.segments.find((segment) => segment.segment === 'total')!
+    expect(total.closed).toBe(true)
+    expect(total.status).toMatch(/Alice vant/)
+  })
+
+  it('treats a single pickup as a hole loss for Nassau', () => {
+    const competition = createCompetitionFromSetup(setup('stroke'), profiles, demoCourse)
+    const aliceId = competition.players[0].id
+    const bobId = competition.players[1].id
+    competition.scores.playerScores[aliceId] = par72Scores(0)
+    competition.scores.playerScores[bobId] = par72Scores(0)
+    competition.scores.playerPickups = {
+      [aliceId]: Array(18).fill(false),
+      [bobId]: Array(18).fill(false),
+    }
+    competition.scores.playerPickups[aliceId][0] = true
+    competition.scores.playerScores[aliceId][0] = null
+    const summary = buildCompetitionSummary(competition)
+    expect(summary.nassau!.holes[0]).toMatchObject({ winnerId: bobId, pending: false })
+  })
+
+  it('halves the hole when both contestants pick up', () => {
+    const competition = createCompetitionFromSetup(setup('stroke'), profiles, demoCourse)
+    const aliceId = competition.players[0].id
+    const bobId = competition.players[1].id
+    competition.scores.playerScores[aliceId] = par72Scores(0)
+    competition.scores.playerScores[bobId] = par72Scores(0)
+    competition.scores.playerPickups = {
+      [aliceId]: Array(18).fill(false),
+      [bobId]: Array(18).fill(false),
+    }
+    competition.scores.playerPickups[aliceId][0] = true
+    competition.scores.playerPickups[bobId][0] = true
+    competition.scores.playerScores[aliceId][0] = null
+    competition.scores.playerScores[bobId][0] = null
+    const summary = buildCompetitionSummary(competition)
+    expect(summary.nassau!.holes[0]).toMatchObject({ winnerId: null, pending: false })
+  })
+
+  it('produces nassau for fourball with two sides', () => {
+    const competition = createCompetitionFromSetup(
+      setup('fourball-stroke', 18, teamProfiles.map((profile, index) => ({
+        playerId: profile.id,
+        teeId: blackTee.id,
+        sideId: index < 2 ? 'side-1' : 'side-2',
+      }))),
+      teamProfiles,
+      demoCourse,
+    )
+    expect(competition.sides).toHaveLength(2)
+    competition.scores.playerScores[competition.players[0].id] = par72Scores(0)
+    competition.scores.playerScores[competition.players[1].id] = par72Scores(2)
+    competition.scores.playerScores[competition.players[2].id] = par72Scores(1)
+    competition.scores.playerScores[competition.players[3].id] = par72Scores(1)
+    const summary = buildCompetitionSummary(competition)
+    expect(summary.nassau).not.toBeNull()
+    expect(summary.nassau!.participants.map((entry) => entry.id)).toEqual(competition.sides.map((side) => side.id))
+  })
+
+  it('returns null for stroke with three or more players', () => {
+    const competition = createCompetitionFromSetup(
+      setup('stroke', 18, teamProfiles.map((profile) => ({ playerId: profile.id, teeId: blackTee.id }))),
+      teamProfiles,
+      demoCourse,
+    )
+    const summary = buildCompetitionSummary(competition)
+    expect(summary.nassau).toBeNull()
+  })
+})
+
 describe('pickup scoring', () => {
   const profiles: PlayerProfile[] = [
     { id: 'p1', name: 'Alice', handicapIndex: 5 },

@@ -36,11 +36,16 @@ const metricKey = computed<'stablefordPoints' | 'netTotal'>(() =>
             −{{ Math.max(0, (leaderboard[0]?.[metricKey] ?? 0) - (entry[metricKey] ?? 0)) }}
           </span>
         </div>
-        <div data-num class="text-[18px] font-semibold tracking-[-0.02em]">
-          {{ isMatchPlay ? (entry.matchStatus ?? '–') : isStableford ? entry.stablefordPoints : entry.netTotal }}
-          <span data-mono class="ml-0.5 text-[10px] font-normal text-[color:var(--color-ink-muted)]">
-            {{ isMatchPlay ? '' : isStableford ? 'pts' : 'netto' }}
+        <div class="flex items-baseline gap-1.5">
+          <span data-mono class="text-[10px] text-[color:var(--color-ink-muted)]">
+            etter {{ entry.holesPlayed }}
           </span>
+          <div data-num class="text-[18px] font-semibold tracking-[-0.02em]">
+            {{ isMatchPlay ? (entry.matchStatus ?? '–') : isStableford ? entry.stablefordPoints : entry.netTotal }}
+            <span data-mono class="ml-0.5 text-[10px] font-normal text-[color:var(--color-ink-muted)]">
+              {{ isMatchPlay ? '' : isStableford ? 'pts' : 'netto' }}
+            </span>
+          </div>
         </div>
       </li>
     </ul>

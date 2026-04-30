@@ -5,13 +5,15 @@ import { toast } from 'vue-sonner'
 import { getCourseById, getCourses } from '@/lib/course-catalog'
 import {
   buildPercentageAllowance,
+  competitionParticipantCount,
   createCompetitionFromSetup,
   getDefaultAllowanceRule,
   isTeamFormat,
-  supportsSkins,
+  supportsSideGame,
   type AllowanceRuleSnapshot,
   type CompetitionFormat,
   type CompetitionSideGame,
+  type NassauMode,
   type SkinsMode,
 } from '@/lib/golf'
 import { useCompetitionsStore } from '@/stores/competitions'
@@ -46,6 +48,8 @@ const form = reactive({
   courseId: courses[0]?.id ?? '',
   skinsEnabled: false,
   skinsMode: 'net' as SkinsMode,
+  nassauEnabled: false,
+  nassauMode: 'net' as NassauMode,
   allowancePercentage: getDefaultPercentage('stableford'),
 })
 
@@ -58,6 +62,25 @@ const selectedPlayers = computed(() =>
 const isTeamCompetition = computed(() => isTeamFormat(form.format))
 const requiresPair = computed(() => form.format === 'match-play')
 const allowanceIsPercentage = computed(() => form.format !== 'scramble-2')
+
+const reviewSideGames = computed<CompetitionSideGame[]>(() => {
+  const games: CompetitionSideGame[] = []
+  if (form.skinsEnabled) {
+    games.push({ id: 'preview-skins', type: 'skins', enabled: true, mode: form.skinsMode })
+  }
+  if (form.nassauEnabled) {
+    games.push({ id: 'preview-nassau', type: 'nassau', enabled: true, mode: form.nassauMode })
+  }
+  return games
+})
+
+const sideCount = computed(() => {
+  if (!isTeamCompetition.value) return 0
+  return new Set(selectedPlayers.value.map((p) => selections[p.id]?.sideId).filter(Boolean)).size
+})
+const participantCount = computed(() =>
+  competitionParticipantCount(form.format, selectedPlayers.value.length, sideCount.value),
+)
 
 const allowanceRule = computed<AllowanceRuleSnapshot>(() => {
   if (!allowanceIsPercentage.value) {
@@ -83,12 +106,18 @@ watch(
 watch(
   () => form.format,
   (format) => {
-    if (!supportsSkins(format)) form.skinsEnabled = false
     form.allowancePercentage = getDefaultPercentage(format)
     autoAssignSides()
+    if (!supportsSideGame('skins', format, participantCount.value)) form.skinsEnabled = false
+    if (!supportsSideGame('nassau', format, participantCount.value)) form.nassauEnabled = false
   },
   { immediate: true },
 )
+
+watch(participantCount, (count) => {
+  if (!supportsSideGame('skins', form.format, count)) form.skinsEnabled = false
+  if (!supportsSideGame('nassau', form.format, count)) form.nassauEnabled = false
+})
 
 watch(
   () => selectedPlayers.value.map((p) => p.id).join(','),
@@ -169,9 +198,13 @@ async function startRound() {
   const course = selectedCourse.value
   if (!course) return
 
-  const sideGames: CompetitionSideGame[] = form.skinsEnabled
-    ? [{ id: crypto.randomUUID(), type: 'skins', enabled: true, mode: form.skinsMode }]
-    : []
+  const sideGames: CompetitionSideGame[] = []
+  if (form.skinsEnabled) {
+    sideGames.push({ id: crypto.randomUUID(), type: 'skins', enabled: true, mode: form.skinsMode })
+  }
+  if (form.nassauEnabled) {
+    sideGames.push({ id: crypto.randomUUID(), type: 'nassau', enabled: true, mode: form.nassauMode })
+  }
 
   const competition = createCompetitionFromSetup(
     {
@@ -271,7 +304,10 @@ function defaultName() {
         v-model:allowance-percentage="form.allowancePercentage"
         v-model:skins-enabled="form.skinsEnabled"
         v-model:skins-mode="form.skinsMode"
+        v-model:nassau-enabled="form.nassauEnabled"
+        v-model:nassau-mode="form.nassauMode"
         :format="form.format"
+        :participant-count="participantCount"
         :allowance-is-percentage="allowanceIsPercentage"
         :presets="ALLOWANCE_PRESETS"
       />
@@ -285,8 +321,7 @@ function defaultName() {
         :selected-players="selectedPlayers"
         :selections="selections"
         :allowance-label="allowanceRule.label"
-        :skins-enabled="form.skinsEnabled"
-        :skins-mode="form.skinsMode"
+        :side-games="reviewSideGames"
         :issue="issue"
       />
     </div>
